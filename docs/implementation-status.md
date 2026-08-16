@@ -17,12 +17,13 @@ AWS deployment was authorized on August 16, 2026. The low-cost hosted API stack 
 Bedrock model access, an allowlisted Secrets Manager payload, a retained KMS key, and
 prefix-scoped access to the existing private S3 bucket. Public liveness and readiness probes
 passed against CockroachDB Cloud revision `0004`, LangChain managed-MCP retrieval, and S3-KMS
-raw-document storage. Amplify SSR deployment is the remaining hosted acceptance step.
+raw-document storage. Amplify SSR is deployed from the connected GitHub `main` branch at
+`https://main.d1zm7v13x5ofdq.amplifyapp.com` with automatic builds enabled.
 
 Repository-connected deployment preparation is complete: `amplify.yml` builds the pnpm Next.js
 monorepo, and a reproducible Lambda packaging script produces a Linux x86_64 artifact below AWS
 size limits. Hosted startup reads only four allowlisted Cockroach values from Secrets Manager.
-The locked dependency set and 36 non-integration tests pass; lint, strict typing, 17 Vitest tests,
+The locked dependency set and 36 non-integration tests pass; lint, strict typing, 19 Vitest tests,
 the Next.js production build, secret scan, evaluation, and both CDK synth paths also pass.
 Destructive demo reset remains disabled when `APP_ENV=hosted`.
 
@@ -36,7 +37,7 @@ Destructive demo reset remains disabled when `APP_ENV=hosted`.
 | Durable local workflow              | Pass   | A generated PDF reached `READY`, created structured report/vector rows and a review task, stored approval transactionally, then a fresh store instance returned `NO_ACTION` with prior memory applied.                                                                                                                                                                                                                                                                                                                                                                  |
 | Live local Bedrock adapter          | Pass   | A real Titan v2 call returned a validated normalized 1,024-D vector; a real Nova Lite Converse call returned the forced proposal; and a full CockroachDB-backed run persisted `NO_ACTION` with six authorized evidence items after reusing verified review memory. The UI/API report `LOCAL_BEDROCK`.                                                                                                                                                                                                                                                                   |
 | LangChain + Cloud MCP profile       | Pass   | Cloud SQL connected to database `husky` at revision `0004_durable_workflow_state`; managed MCP exposed 12 tools, BoneTwin allowed only `select_query`, and the scoped checker retrieved eight curated synthetic memory IDs.                                                                                                                                                                                                                                                                                                                                             |
-| Interactive upload-to-result UI     | Pass   | Upload exists only inside the `/demo` Overview with a visible required PDF input and native form submit; the standalone upload view/nav entry was removed and legacy `/demo?view=upload` resolves to Overview. The local proxy forwards exact bytes through authenticated, authorized, idempotent, audited APIs. A real multipart submission redirected to its server-rendered `READY` parsed report. Static, client-fetched, server-fetched, and fallback-error display paths remove the requested word while preserving internal safety data; 17 frontend tests pass. |
+| Interactive upload-to-result UI     | Pass   | Upload exists only inside the `/demo` Overview with a visible required PDF input and native form submit; the standalone upload view/nav entry was removed and legacy `/demo?view=upload` resolves to Overview. The local proxy forwards exact bytes through authenticated, authorized, idempotent, audited APIs. A real multipart submission redirected to its server-rendered `READY` parsed report. Static, client-fetched, server-fetched, and fallback-error display paths remove the requested word while preserving internal safety data; 19 frontend tests pass. |
 
 The public landing page is available at `http://127.0.0.1:3000` and the working demo at
 `http://127.0.0.1:3000/demo` after
@@ -138,6 +139,10 @@ created a fresh store instance, and returned `NO_ACTION` with
   139.7 MiB uncompressed with no Windows extensions. CloudFormation deployment completed, and
   public `/health/live` plus `/health/ready` returned healthy CockroachDB Cloud, LangChain MCP,
   and S3-KMS adapters.
+- Hosted browser acceptance: Amplify release 4 deployed the exact Git commit recorded in `main`.
+  Landing, sign-in, sign-up, and demo routes returned 200. A fabricated 2026 PDF posted through
+  the public SSR upload route, persisted as `READY`, rendered its evidence page, and left zero raw
+  objects under the hosted S3 prefix after the transactional cleanup.
 
 ## Phase status
 
@@ -154,8 +159,8 @@ created a fresh store instance, and returned `NO_ACTION` with
 - Phase 8 extension: LangChain managed-MCP retrieval and the CockroachDB Cloud local profile are
   implemented and live-validated with scoped synthetic memory retrieval.
 - Phase 9: complete locally; all reproducible release gates passed.
-- Phase 10: local setup and demo-document subset passed; Amplify frontend acceptance and
-  submission assets remain pending.
+- Phase 10: local setup, demo documents, Lambda backend, and Amplify frontend acceptance passed;
+  submission video and form remain pending.
 
 ## Remaining risks
 
