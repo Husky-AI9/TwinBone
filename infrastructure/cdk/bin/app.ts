@@ -5,6 +5,7 @@ import {
   AgentStack,
   ApiStack,
   AuthStack,
+  HostingStack,
   IngestionStack,
   ObservabilityStack,
   StorageStack,
@@ -28,3 +29,19 @@ new IngestionStack(app, `${prefix}-Ingestion`, {
 new ApiStack(app, `${prefix}-Api`, { env, userPool: auth.userPool });
 new AgentStack(app, `${prefix}-Agent`, { env });
 new ObservabilityStack(app, `${prefix}-Observability`, { env });
+
+if (app.node.tryGetContext("deployHosting") === "true") {
+  new HostingStack(app, `${prefix}-Hosting`, {
+    env,
+    documentBucketName:
+      app.node.tryGetContext("documentBucketName") ?? "bonetwin-demo-us-west-2",
+    frontendOrigin:
+      app.node.tryGetContext("frontendOrigin") ??
+      "https://main.d1zm7v13x5ofdq.amplifyapp.com",
+    lambdaCodePath:
+      app.node.tryGetContext("lambdaCodePath") ??
+      "../../dist/lambda/bonetwin-api.zip",
+    runtimeSecretName:
+      app.node.tryGetContext("runtimeSecretName") ?? "bonetwin/hosted/runtime",
+  });
+}

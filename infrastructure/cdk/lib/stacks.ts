@@ -6,6 +6,7 @@ import * as kms from "aws-cdk-lib/aws-kms";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as logs from "aws-cdk-lib/aws-logs";
 import * as s3 from "aws-cdk-lib/aws-s3";
+import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
 import * as sfn from "aws-cdk-lib/aws-stepfunctions";
 import * as tasks from "aws-cdk-lib/aws-stepfunctions-tasks";
 import * as cdk from "aws-cdk-lib";
@@ -218,6 +219,113 @@ export class AgentStack extends cdk.Stack {
       value:
         "Runtime role ready; deploy versioned Strands artifact with AWS credentials",
     });
+  }
+}
+
+interface HostingStackProps extends cdk.StackProps {
+  documentBucketName: string;
+  frontendOrigin: string;
+  lambdaCodePath: string;
+  runtimeSecretName: string;
+}
+
+export class HostingStack extends cdk.Stack {
+  constructor(scope: Construct, id: string, props: HostingStackProps) {
+    super(scope, id, props);
+    const documentBucket = s3.Bucket.fromBucketName(
+      this,
+      "HostedDocuments",
+      props.documentBucketName,
+    );
+    const runtimeSecret = secretsmanager.Secret.fromSecretNameV2(
+      this,
+      "RuntimeSecret",
+      props.runtimeSecretName,
+    );
+    const documentKey = new kms.Key(this, "HostedDocumentKey", {
+      alias: "alias/bonetwin-hosted-documents",
+      enableKeyRotation: true,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+    });
+    const functionName = "bonetwin-hosted-api";
+    const logGroup = new logs.LogGroup(this, "HostedApiLogs", {
+      logGroupName: `/aws/lambda/${functionName}`,
+      retention: logs.RetentionDays.ONE_WEEK,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+    const hostedApi = new lambda.Function(this, "HostedApi", {
+      functionName,
+      runtime: lambda.Runtime.PYTHON_3_12,
+      architecture: lambda.Architecture.X86_64,
+      handler: "services.api.app.lambda_handler.handler",
+      code: lambda.Code.fromAsset(props.lambdaCodePath),
+      memorySize: 1024,
+      timeout: cdk.Duration.seconds(120),
+      reservedConcurrentExecutions: 2,
+      tracing: lambda.Tracing.ACTIVE,
+      logGroup,
+      environment: {
+        ALLOW_SYNTHETIC_DEMO_ONLY: "true",
+        APP_ENV: "hosted",
+        AUTH_MODE: "mock",
+        AWS_DOCUMENT_PIPELINE_MODE: "mock",
+        BEDROCK_CHAT_MODEL_ID: "us.amazon.nova-lite-v1:0",
+        BEDROCK_EMBEDDING_MODEL_ID: "amazon.titan-embed-text-v2:0",
+        BEDROCK_MODE: "live",
+        BONETWIN_HOSTING_SECRET_ID: runtimeSecret.secretName,
+        COCKROACH_MCP_MODE: "langchain",
+        CORS_ORIGINS: props.frontendOrigin,
+        KMS_KEY_ARN: documentKey.keyArn,
+        RAW_DOCUMENT_RETENTION_DAYS: "1",
+        RAW_DOCUMENT_STORE_MODE: "s3",
+        S3_DOCUMENT_BUCKET: documentBucket.bucketName,
+        S3_DOCUMENT_PREFIX: "bonetwin/raw-hosted",
+        S3_PRESIGNED_URL_EXPIRY_SECONDS: "900",
+        WORKFLOW_STORE_MODE: "cockroach",
+      },
+    });
+    runtimeSecret.grantRead(hostedApi);
+    documentBucket.grantReadWrite(hostedApi, "bonetwin/raw-hosted/*");
+    documentKey.grantEncryptDecrypt(hostedApi);
+    hostedApi.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["bedrock:InvokeModel"],
+        resources: [
+          `arn:${cdk.Aws.PARTITION}:bedrock:*::foundation-model/amazon.*`,
+          `arn:${cdk.Aws.PARTITION}:bedrock:${this.region}:${this.account}:inference-profile/*`,
+        ],
+      }),
+    );
+    const functionUrl = hostedApi.addFunctionUrl({
+      authType: lambda.FunctionUrlAuthType.NONE,
+      cors: {
+        allowedOrigins: [props.frontendOrigin],
+        allowedMethods: [lambda.HttpMethod.ALL],
+        allowedHeaders: [
+          "Authorization",
+          "Content-Type",
+          "Idempotency-Key",
+          "X-Request-ID",
+        ],
+        exposedHeaders: ["X-Request-ID"],
+        maxAge: cdk.Duration.hours(1),
+      },
+      invokeMode: lambda.InvokeMode.BUFFERED,
+    });
+    const publicFunctionUrlInvoke = new lambda.CfnPermission(
+      this,
+      "HostedApiFunctionUrlInvokePermission",
+      {
+        action: "lambda:InvokeFunction",
+        functionName: hostedApi.functionName,
+        principal: "*",
+      },
+    );
+    publicFunctionUrlInvoke.addPropertyOverride("InvokedViaFunctionUrl", true);
+    publicFunctionUrlInvoke.node.addDependency(functionUrl);
+    new cdk.CfnOutput(this, "FunctionName", { value: hostedApi.functionName });
+    new cdk.CfnOutput(this, "FunctionUrl", { value: functionUrl.url });
+    new cdk.CfnOutput(this, "DocumentKeyArn", { value: documentKey.keyArn });
   }
 }
 

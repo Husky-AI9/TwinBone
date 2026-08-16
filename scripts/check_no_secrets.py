@@ -16,7 +16,11 @@ EXCLUDED_PARTS = {
     ".ruff_cache",
     ".tools",
     ".venv",
+    "build",
+    "cdk.out",
+    "dist",
     "node_modules",
+    "out",
 }
 EXCLUDED_NAMES = {
     "check_no_secrets.py",

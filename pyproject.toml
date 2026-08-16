@@ -4,12 +4,14 @@ version = "0.0.0"
 description = "BoneTwin Python monorepo tooling"
 requires-python = ">=3.11,<3.14"
 dependencies = [
+  "greenlet>=3.2.4,<3.3",
   "alembic>=1.16,<2",
   "boto3>=1.40,<2",
   "fastapi>=0.116,<1",
   "httpx>=0.28,<1",
   "langchain-core>=1,<2",
   "langchain-mcp-adapters>=0.2,<1",
+  "mangum>=0.19,<1",
   "mcp>=1.24,<2",
   "pyjwt[crypto]>=2.10,<3",
   "psycopg[binary]>=3.2,<4",

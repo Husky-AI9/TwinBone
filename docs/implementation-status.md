@@ -12,20 +12,19 @@ synthetic upload acceptance have been verified without printing credentials.
 The workflow includes Memory Impact Trace, process-restart proof, read-only MCP inspection,
 and reproducible resilience evaluation.
 
-Cloud deployment acceptance remains pending because no AWS deployment was authorized; the CDK
-application was synthesized but not deployed. The local
-Bedrock path was live-validated through the existing AWS SDK credential chain with Titan Text
-Embeddings v2 and Amazon Nova Lite. The local agent adapter was not deployed to Bedrock
-AgentCore. The Managed MCP Server configuration is documented, locally privilege-tested, and
-live-validated against the configured CockroachDB Cloud cluster.
+AWS deployment was authorized on August 16, 2026. The low-cost hosted API stack is deployed in
+`us-west-2` as a Python 3.12 Lambda Function URL with reserved concurrency two, one-week logs,
+Bedrock model access, an allowlisted Secrets Manager payload, a retained KMS key, and
+prefix-scoped access to the existing private S3 bucket. Public liveness and readiness probes
+passed against CockroachDB Cloud revision `0004`, LangChain managed-MCP retrieval, and S3-KMS
+raw-document storage. Amplify SSR deployment is the remaining hosted acceptance step.
 
-Repository-connected deployment preparation is complete: `apprunner.yaml` serves the Python
-3.11-compatible FastAPI API from App Runner, `amplify.yml` builds the pnpm Next.js monorepo, and
-hosted startup migrates and idempotently seeds the dedicated synthetic CockroachDB database.
-The locked dependency set and 34 non-integration tests pass in an isolated Python 3.11 runtime;
-lint, strict typing, Vitest, the Next.js production build, and CDK synthesis also pass. Destructive
-demo reset is explicitly disabled when `APP_ENV=hosted`. Actual App Runner and Amplify URLs remain
-a manual, credentialed acceptance step.
+Repository-connected deployment preparation is complete: `amplify.yml` builds the pnpm Next.js
+monorepo, and a reproducible Lambda packaging script produces a Linux x86_64 artifact below AWS
+size limits. Hosted startup reads only four allowlisted Cockroach values from Secrets Manager.
+The locked dependency set and 36 non-integration tests pass; lint, strict typing, 17 Vitest tests,
+the Next.js production build, secret scan, evaluation, and both CDK synth paths also pass.
+Destructive demo reset remains disabled when `APP_ENV=hosted`.
 
 ## Local run readiness
 
@@ -135,6 +134,10 @@ created a fresh store instance, and returned `NO_ACTION` with
   and idempotency headers are not sent to S3; the three-test CockroachDB integration workflow
   passes, including direct-upload verification from `UPLOADING` to `READY`, persisted S3
   references/audit evidence, and post-commit raw-object deletion.
+- Hosted Lambda acceptance: the Linux x86_64 Python 3.12 artifact is 47.8 MiB compressed and
+  139.7 MiB uncompressed with no Windows extensions. CloudFormation deployment completed, and
+  public `/health/live` plus `/health/ready` returned healthy CockroachDB Cloud, LangChain MCP,
+  and S3-KMS adapters.
 
 ## Phase status
 
@@ -142,8 +145,8 @@ created a fresh store instance, and returned `NO_ACTION` with
 - Phase 1: implementation complete; local and CockroachDB Cloud migration gates passed.
 - Phase 2: local implementation and acceptance tests passed; production Cognito deployment pending.
 - Phase 3: local synthetic vertical slice passed.
-- Phase 4: infrastructure implemented and synthesized; AWS deployment acceptance pending.
-- Phase 5: trust engine, CockroachDB Cloud persistence, and live local Titan adapter passed.
+- Phase 4: the low-cost Lambda Function URL hosting stack is deployed and publicly healthy.
+- Phase 5: trust engine, CockroachDB Cloud persistence, and hosted Bedrock IAM wiring passed.
 - Phase 6: local validated safe-action adapter and live Nova Converse execution passed;
   AgentCore hosting remains pending.
 - Phase 7: polished local UI and new-session flow passed.
@@ -151,15 +154,15 @@ created a fresh store instance, and returned `NO_ACTION` with
 - Phase 8 extension: LangChain managed-MCP retrieval and the CockroachDB Cloud local profile are
   implemented and live-validated with scoped synthetic memory retrieval.
 - Phase 9: complete locally; all reproducible release gates passed.
-- Phase 10: local setup and demo-document subset passed; public deployment and submission assets remain pending.
+- Phase 10: local setup and demo-document subset passed; Amplify frontend acceptance and
+  submission assets remain pending.
 
 ## Remaining risks
 
-- Real S3 raw-document storage is implemented for local use with short-lived SigV4 PUT URLs,
-  SHA-256 checksums, SSE-KMS headers, scoped object keys, post-transaction deletion, and a one-day
-  lifecycle setup guide. Adapter and browser credential-isolation tests pass locally; the live AWS
-  readiness probe remains pending until `S3_DOCUMENT_BUCKET` and an S3-capable IAM identity are
-  configured. The existing Bedrock bearer token does not authorize S3.
+- Real S3 raw-document storage is active with short-lived SigV4 PUT URLs, SHA-256 checksums,
+  SSE-KMS headers, scoped object keys, post-transaction deletion, and one-day lifecycle expiry.
+  Browser CORS allows only both local origins and the Amplify `main` origin. The bucket remains
+  private with public-access blocking enabled.
 
 - The detailed anatomical SVG passed structural, accessibility, live-render, type, lint, and
   production-build checks. The embedded browser surface was unavailable, so final cross-browser
@@ -167,10 +170,9 @@ created a fresh store instance, and returned `NO_ACTION` with
 
 - The Windows CockroachDB binary is officially marked experimental and is used only for
   local verification. Docker or CockroachDB Cloud is recommended for regular development.
-- The local web/API processes use mock authentication and are bound to loopback. The configured
-  Cloud database connection uses TLS, but hosted deployment must replace mock auth with Cognito.
-- Local temporary raw-upload storage is filesystem-backed and synthetic-only; hosted mode must
-  replace it with the defined KMS-encrypted S3 lifecycle workflow.
+- The public hackathon slice still uses authenticated static demo identities rather than Cognito.
+  State changes remain bearer-authenticated, role-authorized, idempotent, audited, and restricted
+  to the fixed fabricated subject; production use must replace mock auth with Cognito.
 - AWS Textract, Comprehend Medical, Cognito, Step Functions, and AgentCore have not been called
   in this environment. Titan Embeddings and Bedrock Converse were called only with fixed
   synthetic/de-identified demo context.
