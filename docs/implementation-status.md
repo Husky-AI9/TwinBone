@@ -142,7 +142,9 @@ created a fresh store instance, and returned `NO_ACTION` with
 - Hosted browser acceptance: Amplify release 4 deployed the exact Git commit recorded in `main`.
   Landing, sign-in, sign-up, and demo routes returned 200. A fabricated 2026 PDF posted through
   the public SSR upload route, persisted as `READY`, rendered its evidence page, and left zero raw
-  objects under the hosted S3 prefix after the transactional cleanup.
+  objects under the hosted S3 prefix after the transactional cleanup. Browser API preflight and
+  authenticated timeline calls return one exact-origin CORS header from FastAPI; Lambda Function
+  URL CORS is intentionally disabled to prevent duplicate headers.
 
 ## Phase status
 

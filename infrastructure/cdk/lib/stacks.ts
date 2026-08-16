@@ -298,18 +298,6 @@ export class HostingStack extends cdk.Stack {
     );
     const functionUrl = hostedApi.addFunctionUrl({
       authType: lambda.FunctionUrlAuthType.NONE,
-      cors: {
-        allowedOrigins: [props.frontendOrigin],
-        allowedMethods: [lambda.HttpMethod.ALL],
-        allowedHeaders: [
-          "Authorization",
-          "Content-Type",
-          "Idempotency-Key",
-          "X-Request-ID",
-        ],
-        exposedHeaders: ["X-Request-ID"],
-        maxAge: cdk.Duration.hours(1),
-      },
       invokeMode: lambda.InvokeMode.BUFFERED,
     });
     const publicFunctionUrlInvoke = new lambda.CfnPermission(

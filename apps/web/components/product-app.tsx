@@ -18,6 +18,11 @@ import { boneSites, type BoneSiteId } from "../lib/preview-data";
 
 const SUBJECT_ID = "30000000-0000-4000-8000-000000000001";
 const MAX_UPLOAD_BYTES = 10_000_000;
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_BONETWIN_API_URL ?? "http://127.0.0.1:8000";
+const LOCAL_API = /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/i.test(
+  API_BASE_URL,
+);
 
 const navItems: Array<{ id: AppView; label: string; icon: string }> = [
   { id: "overview", label: "Overview", icon: "grid" },
@@ -1142,8 +1147,7 @@ export function ProductApp({
   const api = useMemo(
     () =>
       new BoneTwinClient({
-        baseUrl:
-          process.env.NEXT_PUBLIC_BONETWIN_API_URL ?? "http://127.0.0.1:8000",
+        baseUrl: API_BASE_URL,
       }),
     [],
   );
@@ -1380,7 +1384,9 @@ export function ProductApp({
                 {connected === false
                   ? "API offline"
                   : connected
-                    ? "Local workflow live"
+                    ? LOCAL_API
+                      ? "Local workflow live"
+                      : "Hosted workflow live"
                     : "Connecting"}
               </span>
               <button
@@ -1420,14 +1426,14 @@ export function ProductApp({
               </p>
             </div>
             <p className="text-xs text-slate-400">
-              Session {sessionCount} · local demo
+              Session {sessionCount} · {LOCAL_API ? "local" : "hosted"} demo
             </p>
           </div>
           {connected === false && (
             <aside className="mt-5 flex items-center justify-between gap-4 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-xs text-rose-700">
               <span>
-                The polished UI is available, but API actions need the local
-                server on port 8000.
+                BoneTwin cannot reach the API right now. Please retry in a
+                moment.
               </span>
               <button
                 type="button"
