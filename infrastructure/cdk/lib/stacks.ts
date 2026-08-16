@@ -261,7 +261,7 @@ export class HostingStack extends cdk.Stack {
       code: lambda.Code.fromAsset(props.lambdaCodePath),
       memorySize: 1024,
       timeout: cdk.Duration.seconds(120),
-      reservedConcurrentExecutions: 2,
+      reservedConcurrentExecutions: 5,
       tracing: lambda.Tracing.ACTIVE,
       logGroup,
       environment: {

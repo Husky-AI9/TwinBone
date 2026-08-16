@@ -1,4 +1,4 @@
-import { BoneTwinClient } from "@bonetwin/api-client";
+import { ApiError, BoneTwinClient } from "@bonetwin/api-client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const readyDocument = {
@@ -22,6 +22,58 @@ afterEach(() => {
 });
 
 describe("browser upload flow", () => {
+  it("retries transient Lambda throttling for read-only requests", async () => {
+    const request = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ message: "Rate Exceeded" }), {
+          status: 429,
+          headers: { "Content-Type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            subject: {},
+            reports: [],
+            memories: [],
+            tasks: [],
+            treatment_events: [],
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      );
+    vi.stubGlobal("fetch", request);
+    const client = new BoneTwinClient({
+      baseUrl: "http://api.test",
+      retryDelayMs: 0,
+    });
+
+    const timeline = await client.timeline(readyDocument.subject_id);
+
+    expect(timeline.reports).toEqual([]);
+    expect(request).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not automatically retry a state-changing request", async () => {
+    const request = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ message: "Rate Exceeded" }), {
+        status: 429,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", request);
+    const client = new BoneTwinClient({
+      baseUrl: "http://api.test",
+      retryDelayMs: 0,
+    });
+
+    await expect(
+      client.runComparison(readyDocument.subject_id),
+    ).rejects.toEqual(new ApiError("Rate Exceeded", 429));
+    expect(request).toHaveBeenCalledTimes(1);
+  });
+
   it("downloads an actual generated PDF instead of substituting preview data", async () => {
     vi.stubGlobal(
       "fetch",

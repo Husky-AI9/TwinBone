@@ -13,7 +13,7 @@ The workflow includes Memory Impact Trace, process-restart proof, read-only MCP 
 and reproducible resilience evaluation.
 
 AWS deployment was authorized on August 16, 2026. The low-cost hosted API stack is deployed in
-`us-west-2` as a Python 3.12 Lambda Function URL with reserved concurrency two, one-week logs,
+`us-west-2` as a Python 3.12 Lambda Function URL with reserved concurrency five, one-week logs,
 Bedrock model access, an allowlisted Secrets Manager payload, a retained KMS key, and
 prefix-scoped access to the existing private S3 bucket. Public liveness and readiness probes
 passed against CockroachDB Cloud revision `0004`, LangChain managed-MCP retrieval, and S3-KMS
@@ -23,7 +23,7 @@ raw-document storage. Amplify SSR is deployed from the connected GitHub `main` b
 Repository-connected deployment preparation is complete: `amplify.yml` builds the pnpm Next.js
 monorepo, and a reproducible Lambda packaging script produces a Linux x86_64 artifact below AWS
 size limits. Hosted startup reads only four allowlisted Cockroach values from Secrets Manager.
-The locked dependency set and 37 non-integration tests pass; lint, strict typing, 27 Vitest tests,
+The locked dependency set and 37 non-integration tests pass; lint, strict typing, 30 Vitest tests,
 the Next.js production build, secret scan, evaluation, and both CDK synth paths also pass.
 Destructive demo reset remains disabled when `APP_ENV=hosted`.
 
@@ -150,6 +150,11 @@ created a fresh store instance, and returned `NO_ACTION` with
   idempotency, request IDs, JSON/PDF bytes, and safe response headers while excluding cookies and
   upstream CORS headers. Hosted runtime transparency reports `AWS` and only active services;
   an unreachable API reports `STATUS UNAVAILABLE` instead of inferring local mock mode.
+- Hosted throttle repair: fresh-Chrome network capture proved the bearer header reached the API,
+  while one of three concurrent startup requests received Lambda 429 throttling under the former
+  concurrency cap of two. Dashboard reads now run sequentially, successful panels survive a
+  sibling failure, read-only calls use bounded transient retries, and the demo concurrency cap is
+  five. State-changing calls remain single-attempt, authenticated, authorized, and idempotent.
 
 ## Phase status
 

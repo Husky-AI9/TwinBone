@@ -24,6 +24,28 @@ const LOCAL_API = /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/i.test(
   API_BASE_URL,
 );
 
+type DashboardApi = Pick<BoneTwinClient, "tasks" | "timeline" | "transparency">;
+
+async function settle<T>(
+  load: () => Promise<T>,
+): Promise<PromiseSettledResult<T>> {
+  try {
+    return { status: "fulfilled", value: await load() };
+  } catch (reason) {
+    return { status: "rejected", reason };
+  }
+}
+
+export async function loadDashboardData(
+  api: DashboardApi,
+  subjectId = SUBJECT_ID,
+) {
+  const timeline = await settle(() => api.timeline(subjectId));
+  const tasks = await settle(() => api.tasks(subjectId));
+  const transparency = await settle(() => api.transparency());
+  return { timeline, tasks, transparency };
+}
+
 const navItems: Array<{ id: AppView; label: string; icon: string }> = [
   { id: "overview", label: "Overview", icon: "grid" },
   { id: "report", label: "Parsed report", icon: "document" },
@@ -1173,19 +1195,21 @@ export function ProductApp({
   const [sessionCount, setSessionCount] = useState(1);
 
   const refresh = useCallback(async () => {
-    try {
-      const [nextTimeline, nextTasks, nextTransparency] = await Promise.all([
-        api.timeline(SUBJECT_ID),
-        api.tasks(SUBJECT_ID),
-        api.transparency(),
-      ]);
-      setTimeline(nextTimeline);
-      setTasks(nextTasks);
-      setTransparency(nextTransparency);
-      setConnected(true);
-    } catch {
-      setConnected(false);
+    const result = await loadDashboardData(api);
+    if (result.timeline.status === "fulfilled") {
+      setTimeline(result.timeline.value);
     }
+    if (result.tasks.status === "fulfilled") {
+      setTasks(result.tasks.value);
+    }
+    if (result.transparency.status === "fulfilled") {
+      setTransparency(result.transparency.value);
+    }
+    setConnected(
+      result.timeline.status === "fulfilled" &&
+        result.tasks.status === "fulfilled" &&
+        result.transparency.status === "fulfilled",
+    );
   }, [api]);
 
   useEffect(() => {

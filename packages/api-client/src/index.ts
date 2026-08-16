@@ -27,6 +27,7 @@ export class ApiError extends Error {
 export type ClientOptions = {
   baseUrl?: string;
   token?: string;
+  retryDelayMs?: number;
 };
 
 export type DemoReportYear = 2019 | 2022 | 2026;
@@ -53,10 +54,12 @@ export function removeSyntheticWord<T>(value: T): T {
 export class BoneTwinClient {
   readonly baseUrl: string;
   private token: string;
+  private readonly retryDelayMs: number;
 
   constructor(options: ClientOptions = {}) {
     this.baseUrl = options.baseUrl ?? "http://127.0.0.1:8000";
     this.token = options.token ?? "demo-clinician";
+    this.retryDelayMs = Math.max(0, options.retryDelayMs ?? 250);
   }
 
   setToken(token: string): void {
@@ -74,20 +77,52 @@ export class BoneTwinClient {
       headers.set("Content-Type", "application/json");
     }
     if (idempotencyKey) headers.set("Idempotency-Key", idempotencyKey);
-    const response = await fetch(`${this.baseUrl}${path}`, {
-      ...init,
-      headers,
-    });
-    if (!response.ok) {
-      const body = (await response.json().catch(() => null)) as {
-        detail?: string;
-      } | null;
-      throw new ApiError(
-        removeSyntheticWord(body?.detail ?? "BoneTwin API request failed"),
-        response.status,
-      );
+    const readOnly = (init.method ?? "GET").toUpperCase() === "GET";
+    const attempts = readOnly ? 3 : 1;
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      let response: Response;
+      try {
+        response = await fetch(`${this.baseUrl}${path}`, {
+          ...init,
+          headers,
+        });
+      } catch (error) {
+        if (attempt + 1 < attempts) {
+          await this.waitBeforeRetry(attempt);
+          continue;
+        }
+        throw error;
+      }
+      if (
+        !response.ok &&
+        [429, 502, 503, 504].includes(response.status) &&
+        attempt + 1 < attempts
+      ) {
+        await response.body?.cancel().catch(() => undefined);
+        await this.waitBeforeRetry(attempt);
+        continue;
+      }
+      if (!response.ok) {
+        const body = (await response.json().catch(() => null)) as {
+          detail?: string;
+          message?: string;
+        } | null;
+        throw new ApiError(
+          removeSyntheticWord(
+            body?.detail ?? body?.message ?? "BoneTwin API request failed",
+          ),
+          response.status,
+        );
+      }
+      return removeSyntheticWord((await response.json()) as T);
     }
-    return removeSyntheticWord((await response.json()) as T);
+    throw new ApiError("BoneTwin API request failed", 503);
+  }
+
+  private async waitBeforeRetry(attempt: number): Promise<void> {
+    await new Promise((resolve) =>
+      setTimeout(resolve, this.retryDelayMs * (attempt + 1)),
+    );
   }
 
   me(): Promise<Me> {
