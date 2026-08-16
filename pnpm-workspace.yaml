@@ -3,6 +3,8 @@ packages:
   - packages/*
   - infrastructure/cdk
 
+nodeLinker: hoisted
+
 allowBuilds:
   esbuild: true
   sharp: true
