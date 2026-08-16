@@ -1,0 +1,13 @@
+{
+  "admin_member_count": 1,
+  "current_user_is_admin": true,
+  "environment": "local synthetic CockroachDB",
+  "finding": "Use a purpose-specific role and revoke PUBLIC access from MCP views; do not reuse the migration administrator.",
+  "mcp_select_view_count": 3,
+  "mcp_write_grants": [],
+  "passed": true,
+  "public_mcp_grants": [],
+  "remediation": "Migration 0003 creates bonetwin_mcp_reader, grants SELECT on three curated views only, and revokes PUBLIC access.",
+  "sensitive_system_grants": [],
+  "skill": "cockroachlabs/cockroachdb-skills/cockroachdb-security-and-governance/hardening-user-privileges@1.0"
+}

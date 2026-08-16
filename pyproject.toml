@@ -1,0 +1,63 @@
+[project]
+name = "bonetwin-workspace"
+version = "0.0.0"
+description = "BoneTwin Python monorepo tooling"
+requires-python = ">=3.11,<3.14"
+dependencies = [
+  "alembic>=1.16,<2",
+  "boto3>=1.40,<2",
+  "fastapi>=0.116,<1",
+  "httpx>=0.28,<1",
+  "langchain-core>=1,<2",
+  "langchain-mcp-adapters>=0.2,<1",
+  "mcp>=1.24,<2",
+  "pyjwt[crypto]>=2.10,<3",
+  "psycopg[binary]>=3.2,<4",
+  "pydantic>=2.11,<3",
+  "pydantic-settings>=2.10,<3",
+  "pypdf>=5,<7",
+  "python-multipart>=0.0.20,<1",
+  "sqlalchemy>=2.0.41,<3",
+  "sqlalchemy-cockroachdb>=2.0.3,<3",
+  "uvicorn[standard]>=0.35,<1",
+]
+
+[dependency-groups]
+dev = [
+  "boto3-stubs[bedrock-runtime,sts]>=1.40,<2",
+  "mypy>=1.18.2,<2",
+  "pytest>=8.4.2,<10",
+  "reportlab>=4.2,<5",
+  "ruff>=0.14.14,<1",
+  "types-reportlab>=4.4,<5",
+]
+
+[tool.uv]
+package = false
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+extend-exclude = [".next", "node_modules", "CODEX_IMPLEMENTATION_SPEC.md"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM"]
+
+[tool.pytest.ini_options]
+addopts = "-q --import-mode=importlib"
+pythonpath = ["."]
+markers = [
+  "integration: requires a running CockroachDB instance",
+]
+testpaths = [
+  "services/api/tests",
+  "services/agent/tests",
+  "services/ingestion/tests",
+  "evaluations/tests",
+]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+files = ["services", "evaluations", "scripts"]
+exclude = ["node_modules", ".venv"]

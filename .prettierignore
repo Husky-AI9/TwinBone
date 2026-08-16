@@ -1,0 +1,6 @@
+.next
+.venv
+node_modules
+pnpm-lock.yaml
+uv.lock
+CODEX_IMPLEMENTATION_SPEC.md

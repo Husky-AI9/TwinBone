@@ -1,0 +1,16 @@
+DROP TABLE IF EXISTS audit_events;
+DROP TABLE IF EXISTS consent_records;
+DROP TABLE IF EXISTS review_events;
+DROP TABLE IF EXISTS review_task_evidence;
+DROP TABLE IF EXISTS review_tasks;
+DROP TABLE IF EXISTS agent_run_memories;
+DROP TABLE IF EXISTS agent_runs;
+DROP TABLE IF EXISTS memory_relations;
+DROP TABLE IF EXISTS memories;
+DROP TABLE IF EXISTS treatment_events;
+DROP TABLE IF EXISTS measurements;
+DROP TABLE IF EXISTS scan_reports;
+DROP TABLE IF EXISTS documents;
+DROP TABLE IF EXISTS subjects;
+DROP TABLE IF EXISTS app_users;
+DROP TABLE IF EXISTS tenants;

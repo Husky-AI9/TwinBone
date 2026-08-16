@@ -1,0 +1,93 @@
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+.envrc
+.direnv/
+.aws/
+secrets/
+credentials
+credentials.*
+!credentials.example.*
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.secret
+*.secrets.*
+
+# Python
+.venv/
+.tools/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+.tox/
+.nox/
+.coverage
+.coverage.*
+htmlcov/
+.cockroach-data/
+tmp/
+*.db
+*.sqlite
+*.sqlite3
+
+# Node / Next.js
+node_modules/
+.pnpm-store/
+.turbo/
+.parcel-cache/
+.next/
+out/
+coverage/
+*.tsbuildinfo
+.eslintcache
+.vercel/
+.open-next/
+
+# Build and infrastructure output
+dist/
+build/
+cdk.out/
+.cdk.staging/
+.aws-sam/
+.terraform/
+*.tfstate
+*.tfstate.*
+
+# Raw or generated document data
+uploads/
+artifacts/
+*.upload
+*.presigned-url
+
+# Test and browser artifacts
+playwright-report/
+test-results/
+blob-report/
+junit.xml
+
+# Editors and operating systems
+.idea/
+.vscode/
+*.swp
+*.swo
+*.bak
+*.orig
+*.rej
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Logs and process state
+*.log
+*.pid
+*.pid.lock

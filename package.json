@@ -1,0 +1,30 @@
+{
+  "name": "bonetwin",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Trustworthy longitudinal bone-health memory agent",
+  "packageManager": "pnpm@11.17.0",
+  "engines": {
+    "node": ">=22 <27",
+    "pnpm": "11.17.0"
+  },
+  "scripts": {
+    "dev": "concurrently -k -n API,WEB -c cyan,green \"python -m uv run uvicorn services.api.app.main:app --reload --host 127.0.0.1 --port 8000\" \"pnpm --filter @bonetwin/web dev\"",
+    "build": "pnpm -r --if-present build",
+    "format": "prettier --write . --ignore-unknown",
+    "format:check": "prettier --check . --ignore-unknown",
+    "lint": "eslint . --max-warnings=0",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "test": "pnpm -r --if-present test"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@types/node": "26.1.1",
+    "concurrently": "9.2.1",
+    "eslint": "10.8.0",
+    "prettier": "3.9.6",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.65.0",
+    "vitest": "4.1.10"
+  }
+}

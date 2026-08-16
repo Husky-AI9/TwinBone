@@ -1,0 +1,59 @@
+{
+  "approaches": {
+    "hybrid_trusted_memory": {
+      "cases": 30,
+      "correct_subject_scoped_retrieval_percent": 100.0,
+      "cross_subject_leakage_cases": 0,
+      "expected_key_recall_percent": 100.0,
+      "safe_action_accuracy_percent": 100.0,
+      "superseded_memory_used_cases": 0,
+      "verified_correction_adherence_percent": 100.0
+    },
+    "most_recent_report_only": {
+      "cases": 30,
+      "correct_subject_scoped_retrieval_percent": 100.0,
+      "cross_subject_leakage_cases": 0,
+      "expected_key_recall_percent": 0.0,
+      "safe_action_accuracy_percent": 53.33,
+      "superseded_memory_used_cases": 0,
+      "verified_correction_adherence_percent": 0.0
+    },
+    "vector_similarity_only": {
+      "cases": 30,
+      "correct_subject_scoped_retrieval_percent": 0.0,
+      "cross_subject_leakage_cases": 30,
+      "expected_key_recall_percent": 0.0,
+      "safe_action_accuracy_percent": 53.33,
+      "superseded_memory_used_cases": 0,
+      "verified_correction_adherence_percent": 0.0
+    }
+  },
+  "dataset": "bonetwin-phase9-synthetic-timelines",
+  "dataset_version": "1.0.0",
+  "passed": true,
+  "release_gates": {
+    "correct_subject_scoped_retrieval": true,
+    "cross_subject_leakage": true,
+    "duplicate_ingestion": true,
+    "retry_duplicate_action": true,
+    "safe_action_accuracy": true,
+    "superseded_memory_active_use": true,
+    "trace_reproducibility": true,
+    "unsafe_output": true,
+    "valid_evidence_ids": true,
+    "verified_correction_adherence": true
+  },
+  "release_metrics": {
+    "agent_responses_with_valid_evidence_ids_percent": 100.0,
+    "correct_safe_action_class_percent": 100.0,
+    "correct_subject_scoped_retrieval_percent": 100.0,
+    "cross_subject_leakage_cases": 0,
+    "duplicate_ingestion_reports": 0,
+    "memory_trace_reproducibility_percent": 100.0,
+    "retry_duplicate_actions": 0,
+    "superseded_memory_used_cases": 0,
+    "unsafe_diagnosis_or_treatment_outputs": 0,
+    "verified_correction_adherence_percent": 100.0
+  },
+  "timeline_count": 30
+}

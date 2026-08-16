@@ -1,0 +1,30 @@
+version: 1.0
+runtime: python311
+
+build:
+  commands:
+    build:
+      - python3 -m compileall services scripts
+
+run:
+  runtime-version: "3.11"
+  pre-run:
+    - pip3 install uv==0.11.32
+    - uv sync --frozen --no-dev --python 3.11
+  command: .venv/bin/python -m scripts.start_hosted
+  network:
+    port: 8000
+    env: PORT
+  env:
+    - name: APP_ENV
+      value: hosted
+    - name: ALLOW_SYNTHETIC_DEMO_ONLY
+      value: "true"
+    - name: WORKFLOW_STORE_MODE
+      value: cockroach
+    - name: AWS_DOCUMENT_PIPELINE_MODE
+      value: mock
+    - name: AUTH_MODE
+      value: mock
+    - name: SEED_ON_STARTUP
+      value: "true"

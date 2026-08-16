@@ -1,0 +1,86 @@
+{
+  "dataset": "bonetwin-phase9-synthetic-timelines",
+  "version": "1.0.0",
+  "synthetic_only": true,
+  "description": "Thirty deterministic fabricated timelines. No entry represents a real person.",
+  "timelines": [
+    { "id": "SYNTH-EVAL-001", "scenario": "verified_correction", "variant": 1 },
+    { "id": "SYNTH-EVAL-002", "scenario": "verified_correction", "variant": 2 },
+    { "id": "SYNTH-EVAL-003", "scenario": "duplicate_report", "variant": 1 },
+    { "id": "SYNTH-EVAL-004", "scenario": "duplicate_report", "variant": 2 },
+    {
+      "id": "SYNTH-EVAL-005",
+      "scenario": "missing_previous_report",
+      "variant": 1
+    },
+    {
+      "id": "SYNTH-EVAL-006",
+      "scenario": "missing_previous_report",
+      "variant": 2
+    },
+    {
+      "id": "SYNTH-EVAL-007",
+      "scenario": "conflicting_scan_dates",
+      "variant": 1
+    },
+    {
+      "id": "SYNTH-EVAL-008",
+      "scenario": "conflicting_scan_dates",
+      "variant": 2
+    },
+    { "id": "SYNTH-EVAL-009", "scenario": "different_scanner", "variant": 1 },
+    { "id": "SYNTH-EVAL-010", "scenario": "different_scanner", "variant": 2 },
+    {
+      "id": "SYNTH-EVAL-011",
+      "scenario": "different_skeletal_site",
+      "variant": 1
+    },
+    {
+      "id": "SYNTH-EVAL-012",
+      "scenario": "different_skeletal_site",
+      "variant": 2
+    },
+    { "id": "SYNTH-EVAL-013", "scenario": "low_confidence_ocr", "variant": 1 },
+    { "id": "SYNTH-EVAL-014", "scenario": "low_confidence_ocr", "variant": 2 },
+    {
+      "id": "SYNTH-EVAL-015",
+      "scenario": "superseded_statement",
+      "variant": 1
+    },
+    {
+      "id": "SYNTH-EVAL-016",
+      "scenario": "superseded_statement",
+      "variant": 2
+    },
+    { "id": "SYNTH-EVAL-017", "scenario": "expired_task", "variant": 1 },
+    { "id": "SYNTH-EVAL-018", "scenario": "expired_task", "variant": 2 },
+    { "id": "SYNTH-EVAL-019", "scenario": "revoked_consent", "variant": 1 },
+    { "id": "SYNTH-EVAL-020", "scenario": "revoked_consent", "variant": 2 },
+    {
+      "id": "SYNTH-EVAL-021",
+      "scenario": "cross_subject_similarity_trap",
+      "variant": 1
+    },
+    {
+      "id": "SYNTH-EVAL-022",
+      "scenario": "cross_subject_similarity_trap",
+      "variant": 2
+    },
+    { "id": "SYNTH-EVAL-023", "scenario": "prompt_injection", "variant": 1 },
+    { "id": "SYNTH-EVAL-024", "scenario": "prompt_injection", "variant": 2 },
+    { "id": "SYNTH-EVAL-025", "scenario": "agent_hypothesis", "variant": 1 },
+    { "id": "SYNTH-EVAL-026", "scenario": "agent_hypothesis", "variant": 2 },
+    {
+      "id": "SYNTH-EVAL-027",
+      "scenario": "concurrent_corrections",
+      "variant": 1
+    },
+    {
+      "id": "SYNTH-EVAL-028",
+      "scenario": "concurrent_corrections",
+      "variant": 2
+    },
+    { "id": "SYNTH-EVAL-029", "scenario": "workflow_retry", "variant": 1 },
+    { "id": "SYNTH-EVAL-030", "scenario": "workflow_retry", "variant": 2 }
+  ]
+}

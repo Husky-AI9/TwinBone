@@ -1,0 +1,14 @@
+BONETWIN SYNTHETIC DXA
+SYNTHETIC DEMO - NOT A MEDICAL RECORD
+Subject pseudonym: SYNTH-BONE-001
+Scan date: 2026-04-12
+Facility: Synthetic Imaging Center B
+Scanner manufacturer: Hologic
+Scanner model: Horizon A (synthetic)
+Report type: DXA BMD
+
+Left Total Hip BMD 0.742 g/cm2; T-score -1.6; Z-score -0.4; Confidence 0.98; Longitudinal YES
+Left Femoral Neck BMD 0.668 g/cm2; T-score -1.7; Z-score -0.5; Confidence 0.88; Longitudinal YES
+Lumbar Spine L1-L4 BMD 0.811 g/cm2; T-score -2.1; Z-score -0.8; Confidence 0.97; Longitudinal NO
+
+This fixture is fabricated and contains no real patient data.

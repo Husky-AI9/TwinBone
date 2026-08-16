@@ -1,0 +1,113 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.17.0
+          run_install: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: pnpm
+
+      - name: Install Python dependencies
+        run: uv sync --locked
+
+      - name: Install Node dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Python formatting
+        run: uv run ruff format --check .
+
+      - name: Python lint
+        run: uv run ruff check .
+
+      - name: Python type check
+        run: uv run mypy services evaluations scripts
+
+      - name: Python tests
+        run: uv run pytest -m "not integration"
+
+      - name: Phase 9 reproducible evaluation
+        run: uv run python -m evaluations.runners.memory_quality --check
+
+      - name: Start CockroachDB
+        run: |
+          docker run --detach --name bonetwin-cockroach \
+            --publish 26257:26257 --publish 8080:8080 \
+            cockroachdb/cockroach:v26.2.4 \
+            start-single-node --insecure \
+            --listen-addr=0.0.0.0:26257 --http-addr=0.0.0.0:8080
+          for attempt in {1..30}; do
+            if docker exec bonetwin-cockroach cockroach sql \
+              --insecure --host=localhost:26257 --execute="SELECT 1"; then
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs bonetwin-cockroach
+          exit 1
+
+      - name: Apply CockroachDB migrations
+        env:
+          DATABASE_URL: postgresql://root@localhost:26257/bonetwin?sslmode=disable
+        run: uv run python -m scripts.migrate
+
+      - name: Seed synthetic demo records
+        env:
+          DATABASE_URL: postgresql://root@localhost:26257/bonetwin?sslmode=disable
+        run: uv run python -m scripts.seed
+
+      - name: CockroachDB integration tests
+        env:
+          BONETWIN_RUN_DB_TESTS: "1"
+          DATABASE_URL: postgresql://root@localhost:26257/bonetwin?sslmode=disable
+        run: uv run pytest -m integration
+
+      - name: MCP read-only boundary audit
+        env:
+          DATABASE_URL: postgresql://root@localhost:26257/bonetwin?sslmode=disable
+        run: |
+          uv run python -m scripts.check_mcp_readonly
+          uv run python -m scripts.run_cockroach_privilege_skill
+
+      - name: Node formatting
+        run: pnpm format:check
+
+      - name: Node lint
+        run: pnpm lint
+
+      - name: Node type check
+        run: pnpm typecheck
+
+      - name: Node tests
+        run: pnpm test
+
+      - name: Production web build
+        run: pnpm build
+
+      - name: AWS CDK synthesis
+        run: pnpm --filter @bonetwin/infrastructure synth --quiet
+
+      - name: Secret signature scan
+        run: uv run python scripts/check_no_secrets.py

@@ -1,0 +1,20 @@
+{
+  "name": "@bonetwin/infrastructure",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "synth": "cdk synth"
+  },
+  "dependencies": {
+    "aws-cdk-lib": "2.207.0",
+    "constructs": "10.4.2"
+  },
+  "devDependencies": {
+    "@types/node": "26.1.1",
+    "aws-cdk": "2.1023.0",
+    "tsx": "4.20.6"
+  }
+}
