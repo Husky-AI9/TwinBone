@@ -6,6 +6,7 @@
  */
 import type {
   AgentRun,
+  DashboardSnapshot,
   DemoDataReset,
   DocumentStatus,
   Me,
@@ -135,6 +136,10 @@ export class BoneTwinClient {
 
   timeline(subjectId: string): Promise<Timeline> {
     return this.request(`/v1/subjects/${subjectId}/timeline`);
+  }
+
+  dashboard(subjectId: string): Promise<DashboardSnapshot> {
+    return this.request(`/v1/subjects/${subjectId}/dashboard`);
   }
 
   clearDemoData(subjectId: string): Promise<DemoDataReset> {

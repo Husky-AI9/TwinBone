@@ -30,6 +30,18 @@ def test_authentication_and_subject_isolation() -> None:
     assert response.json() == {"detail": "Subject not found"}
 
 
+def test_dashboard_snapshot_is_authenticated_and_bundled() -> None:
+    path = f"/v1/subjects/{DEMO_SUBJECT_ID}/dashboard"
+    assert client.get(path).status_code == 401
+
+    response = client.get(path, headers=AUTH)
+
+    assert response.status_code == 200
+    assert set(response.json()) == {"timeline", "tasks", "transparency"}
+    assert response.json()["timeline"]["subject"]["id"] == str(DEMO_SUBJECT_ID)
+    assert response.json()["tasks"] == response.json()["timeline"]["tasks"]
+
+
 def test_local_demo_reset_is_clinician_only_and_replay_safe() -> None:
     denied = client.delete(
         f"/v1/subjects/{DEMO_SUBJECT_ID}/demo-data",

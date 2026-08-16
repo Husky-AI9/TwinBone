@@ -184,3 +184,11 @@ class TransparencyResponse(ApiModel):
     agent: dict[str, str]
     audit_event_count: int
     safety_boundary: str
+
+
+class DashboardResponse(ApiModel):
+    """One authenticated snapshot for the explicitly loaded dashboard."""
+
+    timeline: TimelineResponse
+    tasks: list[ReviewTask]
+    transparency: TransparencyResponse

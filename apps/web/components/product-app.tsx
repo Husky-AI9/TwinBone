@@ -3,6 +3,7 @@
 import { BoneTwinClient, type DemoReportYear } from "@bonetwin/api-client";
 import type {
   AgentRun,
+  DashboardSnapshot,
   DocumentStatus,
   Measurement,
   MemoryTraceItem,
@@ -10,10 +11,16 @@ import type {
   Timeline,
   Transparency,
 } from "@bonetwin/shared-types";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { AnatomicalSkeleton } from "./anatomical-skeleton";
 import { type AppView, viewHref } from "../lib/navigation";
+import {
+  clearDemoSessionCache,
+  readDemoSessionCache,
+  writeDemoSessionCache,
+  type DemoSessionCache,
+} from "../lib/demo-session-cache";
 import { boneSites, type BoneSiteId } from "../lib/preview-data";
 
 const SUBJECT_ID = "30000000-0000-4000-8000-000000000001";
@@ -24,26 +31,13 @@ const LOCAL_API = /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/i.test(
   API_BASE_URL,
 );
 
-type DashboardApi = Pick<BoneTwinClient, "tasks" | "timeline" | "transparency">;
-
-async function settle<T>(
-  load: () => Promise<T>,
-): Promise<PromiseSettledResult<T>> {
-  try {
-    return { status: "fulfilled", value: await load() };
-  } catch (reason) {
-    return { status: "rejected", reason };
-  }
-}
+type DashboardApi = Pick<BoneTwinClient, "dashboard">;
 
 export async function loadDashboardData(
   api: DashboardApi,
   subjectId = SUBJECT_ID,
-) {
-  const timeline = await settle(() => api.timeline(subjectId));
-  const tasks = await settle(() => api.tasks(subjectId));
-  const transparency = await settle(() => api.transparency());
-  return { timeline, tasks, transparency };
+): Promise<DashboardSnapshot> {
+  return api.dashboard(subjectId);
 }
 
 const navItems: Array<{ id: AppView; label: string; icon: string }> = [
@@ -458,6 +452,7 @@ export function TimelinePanel({ timeline }: { timeline: Timeline | null }) {
 
 function Overview({
   timeline,
+  onLoadRecord,
   onRun,
   selectedFile,
   onFileChange,
@@ -466,6 +461,7 @@ function Overview({
   busy,
 }: {
   timeline: Timeline | null;
+  onLoadRecord: () => void;
   onRun: () => void;
   selectedFile: File | null;
   onFileChange: (file: File | null) => void;
@@ -479,6 +475,28 @@ function Overview({
     : null;
   return (
     <>
+      {timeline === null && (
+        <Panel className="mb-5 flex flex-col justify-between gap-4 border-[#cfe2dd] bg-[#f7fbfa] p-5 sm:flex-row sm:items-center">
+          <div>
+            <p className="eyebrow">Ready on demand</p>
+            <h2 className="mt-1 text-lg font-semibold">
+              Load this record when you need it
+            </h2>
+            <p className="mt-1 text-xs leading-5 text-slate-500">
+              No cloud request is made when the dashboard opens. This single
+              action loads and caches the record for this browser session.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onLoadRecord}
+            disabled={busy}
+            className="shrink-0 rounded-xl bg-[#123d3a] px-5 py-3 text-sm font-semibold text-white disabled:opacity-60"
+          >
+            {busy ? "Loading…" : "Load record"}
+          </button>
+        </Panel>
+      )}
       <div className="grid gap-3 sm:grid-cols-3">
         {[
           [
@@ -488,26 +506,32 @@ function Overview({
                   month: "short",
                   day: "numeric",
                 })
-              : "None",
+              : "—",
             latestDate
               ? `${latestDate.getFullYear()} · DXA BMD`
-              : "Upload a report",
+              : "Load record to view",
             "teal",
           ],
           [
             "Trusted memories",
-            String(
-              timeline?.memories.filter(
-                (item) => item.verification_status === "VERIFIED",
-              ).length ?? 0,
-            ),
-            "Source-backed & filtered",
+            timeline === null
+              ? "—"
+              : String(
+                  timeline.memories.filter(
+                    (item) => item.verification_status === "VERIFIED",
+                  ).length,
+                ),
+            timeline === null
+              ? "Load record to view"
+              : "Source-backed & filtered",
             "blue",
           ],
           [
             "Open reviews",
-            String(timeline?.subject.open_task_count ?? 0),
-            "Human approval required",
+            timeline === null ? "—" : String(timeline.subject.open_task_count),
+            timeline === null
+              ? "Load record to view"
+              : "Human approval required",
             "amber",
           ],
         ].map(([label, value, detail, tone]) => (
@@ -919,18 +943,32 @@ function TraceGroup({
 
 function TasksScreen({
   tasks,
+  loaded,
   busy,
+  onLoad,
   onResolve,
   onRun,
 }: {
   tasks: ReviewTask[];
+  loaded: boolean;
   busy: boolean;
+  onLoad: () => void;
   onResolve: (
     task: ReviewTask,
     action: "approve" | "correct" | "reject",
   ) => void;
   onRun: () => void;
 }) {
+  if (!loaded)
+    return (
+      <EmptyAction
+        title="Review tasks are ready on demand"
+        detail="Open this queue only when you need it. BoneTwin will make one request and cache the result for this browser session."
+        action="Load review tasks"
+        onClick={onLoad}
+        busy={busy}
+      />
+    );
   if (!tasks.length)
     return (
       <EmptyAction
@@ -1043,7 +1081,17 @@ function TasksScreen({
   );
 }
 
-export function TransparencyScreen({ data }: { data: Transparency | null }) {
+export function TransparencyScreen({
+  data,
+  loaded = true,
+  busy = false,
+  onLoad = () => undefined,
+}: {
+  data: Transparency | null;
+  loaded?: boolean;
+  busy?: boolean;
+  onLoad?: () => void;
+}) {
   const groups = [
     ["Document workflow", data?.document_pipeline ?? []],
     ["Memory Trust Engine", data?.memory_engine ?? []],
@@ -1058,18 +1106,36 @@ export function TransparencyScreen({ data }: { data: Transparency | null }) {
               What is running in this demo
             </h2>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
-              {data === null
-                ? "Runtime details are unavailable because the API could not be reached. No deployment mode is inferred from this fallback."
-                : data.mode === "AWS"
-                  ? "This hosted demo runs on AWS Lambda with encrypted Amazon S3 storage and Amazon Bedrock. CockroachDB Cloud is the durable system of record, with allowlisted LangChain MCP retrieval."
-                  : data.mode === "LOCAL_CLOUD_MCP"
-                    ? "This local UI and API store durable state in CockroachDB Cloud. LangChain calls the managed MCP select_query tool to gate trusted memory retrieval; authorized transactional writes remain in application code."
-                    : data.mode === "LOCAL_BEDROCK"
-                      ? "This local app is calling Amazon Bedrock for Titan embeddings and validated agent decisions. Application authorization and CockroachDB commits remain local."
-                      : "The local workflow uses deterministic offline adapters with the same validated contracts planned for AWS. Cloud usage is never implied when credentials are absent."}
+              {!loaded
+                ? "Runtime details have not been requested. Load them only when you want to inspect the deployment."
+                : data === null
+                  ? "Runtime details are unavailable because the API could not be reached. No deployment mode is inferred from this fallback."
+                  : data.mode === "AWS"
+                    ? "This hosted demo runs on AWS Lambda with encrypted Amazon S3 storage and Amazon Bedrock. CockroachDB Cloud is the durable system of record, with allowlisted LangChain MCP retrieval."
+                    : data.mode === "LOCAL_CLOUD_MCP"
+                      ? "This local UI and API store durable state in CockroachDB Cloud. LangChain calls the managed MCP select_query tool to gate trusted memory retrieval; authorized transactional writes remain in application code."
+                      : data.mode === "LOCAL_BEDROCK"
+                        ? "This local app is calling Amazon Bedrock for Titan embeddings and validated agent decisions. Application authorization and CockroachDB commits remain local."
+                        : "The local workflow uses deterministic offline adapters with the same validated contracts planned for AWS. Cloud usage is never implied when credentials are absent."}
             </p>
           </div>
-          <Badge tone="blue">{data?.mode ?? "STATUS UNAVAILABLE"}</Badge>
+          <div className="flex items-center gap-2">
+            <Badge tone="blue">
+              {!loaded
+                ? "READY ON DEMAND"
+                : (data?.mode ?? "STATUS UNAVAILABLE")}
+            </Badge>
+            {!loaded && (
+              <button
+                type="button"
+                onClick={onLoad}
+                disabled={busy}
+                className="rounded-xl bg-[#123d3a] px-4 py-2.5 text-xs font-semibold text-white disabled:opacity-60"
+              >
+                {busy ? "Loading…" : "Load system status"}
+              </button>
+            )}
+          </div>
         </div>
       </Panel>
       <div className="grid gap-5 lg:grid-cols-2">
@@ -1187,34 +1253,133 @@ export function ProductApp({
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [run, setRun] = useState<AgentRun | null>(null);
   const [tasks, setTasks] = useState<ReviewTask[]>([]);
+  const [tasksLoaded, setTasksLoaded] = useState(false);
   const [transparency, setTransparency] = useState<Transparency | null>(null);
+  const [transparencyLoaded, setTransparencyLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [sectionLoading, setSectionLoading] = useState<AppView | null>(null);
   const [connected, setConnected] = useState<boolean | null>(null);
+  const [usingSessionCache, setUsingSessionCache] = useState(false);
   const [toast, setToast] = useState<string | null>(initialNotice ?? null);
   const [sessionDialog, setSessionDialog] = useState(false);
   const [sessionCount, setSessionCount] = useState(1);
-
-  const refresh = useCallback(async () => {
-    const result = await loadDashboardData(api);
-    if (result.timeline.status === "fulfilled") {
-      setTimeline(result.timeline.value);
-    }
-    if (result.tasks.status === "fulfilled") {
-      setTasks(result.tasks.value);
-    }
-    if (result.transparency.status === "fulfilled") {
-      setTransparency(result.transparency.value);
-    }
-    setConnected(
-      result.timeline.status === "fulfilled" &&
-        result.tasks.status === "fulfilled" &&
-        result.transparency.status === "fulfilled",
-    );
-  }, [api]);
+  const recordLoadPending = useRef(false);
+  const sectionLoadsPending = useRef(new Set<AppView>());
 
   useEffect(() => {
-    void refresh();
-  }, [refresh]);
+    const cached = readDemoSessionCache(window.sessionStorage);
+    if (!cached) return;
+    if (cached.timeline) setTimeline(cached.timeline);
+    if (cached.tasks) {
+      setTasks(cached.tasks);
+      setTasksLoaded(true);
+    }
+    if (cached.transparency) {
+      setTransparency(cached.transparency);
+      setTransparencyLoaded(true);
+    }
+    setUsingSessionCache(
+      Boolean(cached.timeline || cached.tasks || cached.transparency),
+    );
+  }, []);
+
+  function cachePatch(patch: Partial<Omit<DemoSessionCache, "version">>) {
+    const current = readDemoSessionCache(window.sessionStorage) ?? {
+      version: 1 as const,
+    };
+    writeDemoSessionCache(window.sessionStorage, { ...current, ...patch });
+  }
+
+  function invalidateRecordCache(updatedTasks?: ReviewTask[]) {
+    setTimeline(null);
+    if (updatedTasks) {
+      setTasks(updatedTasks);
+      setTasksLoaded(true);
+    } else {
+      setTasks([]);
+      setTasksLoaded(false);
+    }
+    const next: DemoSessionCache = { version: 1 };
+    if (updatedTasks) next.tasks = updatedTasks;
+    if (transparencyLoaded && transparency) next.transparency = transparency;
+    writeDemoSessionCache(window.sessionStorage, next);
+    setUsingSessionCache(false);
+  }
+
+  async function loadRecord() {
+    if (recordLoadPending.current) return;
+    recordLoadPending.current = true;
+    setBusy(true);
+    try {
+      const result = await loadDashboardData(api);
+      setTimeline(result.timeline);
+      setTasks(result.tasks);
+      setTasksLoaded(true);
+      setTransparency(result.transparency);
+      setTransparencyLoaded(true);
+      writeDemoSessionCache(window.sessionStorage, { version: 1, ...result });
+      setUsingSessionCache(false);
+      setConnected(true);
+    } catch (error) {
+      setConnected(false);
+      notify(
+        error instanceof Error ? error.message : "Record could not be loaded.",
+      );
+    } finally {
+      recordLoadPending.current = false;
+      setBusy(false);
+    }
+  }
+
+  async function loadSection(nextView: AppView) {
+    if (sectionLoadsPending.current.has(nextView)) return;
+    sectionLoadsPending.current.add(nextView);
+    if (nextView === "tasks" && !tasksLoaded) {
+      setSectionLoading("tasks");
+      try {
+        const result = await api.tasks(SUBJECT_ID);
+        setTasks(result);
+        setTasksLoaded(true);
+        cachePatch({ tasks: result });
+        setConnected(true);
+      } catch (error) {
+        setConnected(false);
+        notify(
+          error instanceof Error
+            ? error.message
+            : "Review tasks could not be loaded.",
+        );
+      } finally {
+        setSectionLoading(null);
+      }
+    }
+    if (nextView === "transparency" && !transparencyLoaded) {
+      setSectionLoading("transparency");
+      try {
+        const result = await api.transparency();
+        setTransparency(result);
+        setTransparencyLoaded(true);
+        cachePatch({ transparency: result });
+        setConnected(true);
+      } catch (error) {
+        setConnected(false);
+        notify(
+          error instanceof Error
+            ? error.message
+            : "System status could not be loaded.",
+        );
+      } finally {
+        setSectionLoading(null);
+      }
+    }
+    sectionLoadsPending.current.delete(nextView);
+  }
+
+  function navigate(nextView: AppView, load = true) {
+    setView(nextView);
+    window.history.replaceState(null, "", viewHref(nextView));
+    if (load) void loadSection(nextView);
+  }
 
   function notify(message: string) {
     setToast(message);
@@ -1229,9 +1394,9 @@ export function ProductApp({
       const result = await api.uploadDocument(SUBJECT_ID, file);
       setDocument(result);
       setConnected(true);
-      await refresh();
+      invalidateRecordCache();
       notify(`${file.name} is ready. Showing parsed evidence.`);
-      setView("report");
+      navigate("report", false);
     } catch (error) {
       setConnected(false);
       notify(
@@ -1269,8 +1434,8 @@ export function ProductApp({
       const result = await api.runComparison(SUBJECT_ID);
       setRun(result);
       setConnected(true);
-      await refresh();
-      setView("trace");
+      invalidateRecordCache();
+      navigate("trace", false);
       notify(
         result.persisted_review_applied
           ? "Prior approval retrieved in this new session."
@@ -1308,8 +1473,12 @@ export function ProductApp({
                   ? "Approved in clinician review."
                   : "Rejected in clinician review.",
             };
-      await api.resolveTask(task.id, action, payload);
-      await refresh();
+      const updated = await api.resolveTask(task.id, action, payload);
+      const updatedTasks = tasks.map((item) =>
+        item.id === updated.id ? updated : item,
+      );
+      invalidateRecordCache(updatedTasks);
+      setConnected(true);
       notify(
         action === "reject"
           ? "Task rejected and audit recorded."
@@ -1323,13 +1492,26 @@ export function ProductApp({
   }
 
   function beginNewSession() {
+    clearDemoSessionCache(window.sessionStorage);
     setRun(null);
-    setView("overview");
+    setTimeline(null);
+    setTasks([]);
+    setTasksLoaded(false);
+    setTransparency(null);
+    setTransparencyLoaded(false);
+    setUsingSessionCache(false);
+    setConnected(null);
+    navigate("overview", false);
     setSessionCount((count) => count + 1);
     setSessionDialog(false);
     notify(
       "New browser session started. Durable server memory was not cleared.",
     );
+  }
+
+  function logout() {
+    clearDemoSessionCache(window.sessionStorage);
+    window.location.assign("/");
   }
 
   const activeLabel =
@@ -1346,7 +1528,10 @@ export function ProductApp({
               key={item.id}
               href={viewHref(item.id)}
               aria-current={view === item.id ? "page" : undefined}
-              onClick={() => setView(item.id)}
+              onClick={(event) => {
+                event.preventDefault();
+                navigate(item.id);
+              }}
               className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium transition ${view === item.id ? "bg-[#e6f2ef] text-[#123d3a]" : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"}`}
             >
               <span
@@ -1387,6 +1572,13 @@ export function ProductApp({
             </span>
             <Icon name="refresh" className="ml-auto size-4 text-slate-400" />
           </button>
+          <button
+            type="button"
+            onClick={logout}
+            className="mt-2 flex w-full items-center justify-center rounded-xl px-3 py-2 text-xs font-semibold text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+          >
+            Log out
+          </button>
           <p className="mt-4 px-2 text-[10px] leading-4 text-slate-400">
             Data only. Organization and review preparation—not diagnosis or
             treatment.
@@ -1417,7 +1609,9 @@ export function ProductApp({
                     ? LOCAL_API
                       ? "Local workflow live"
                       : "Hosted workflow live"
-                    : "Connecting"}
+                    : usingSessionCache
+                      ? "Session cache"
+                      : "Ready on demand"}
               </span>
               <button
                 type="button"
@@ -1428,7 +1622,15 @@ export function ProductApp({
               </button>
               <a
                 href="/demo#upload-report"
-                onClick={() => setView("overview")}
+                onClick={(event) => {
+                  event.preventDefault();
+                  navigate("overview", false);
+                  window.requestAnimationFrame(() => {
+                    window.document
+                      .getElementById("upload-report")
+                      ?.scrollIntoView();
+                  });
+                }}
                 className="rounded-xl bg-[#123d3a] px-4 py-2.5 text-xs font-semibold text-white shadow-lg shadow-[#123d3a]/15"
               >
                 <span className="mr-1.5 text-base">+</span> Add report
@@ -1467,7 +1669,7 @@ export function ProductApp({
               </span>
               <button
                 type="button"
-                onClick={() => void refresh()}
+                onClick={() => void loadRecord()}
                 className="font-bold"
               >
                 Retry
@@ -1478,6 +1680,7 @@ export function ProductApp({
             {view === "overview" && (
               <Overview
                 timeline={timeline}
+                onLoadRecord={() => void loadRecord()}
                 onRun={() => void runComparison()}
                 selectedFile={selectedFile}
                 onFileChange={chooseFile}
@@ -1497,13 +1700,20 @@ export function ProductApp({
             {view === "tasks" && (
               <TasksScreen
                 tasks={tasks}
-                busy={busy}
+                loaded={tasksLoaded}
+                busy={busy || sectionLoading === "tasks"}
+                onLoad={() => void loadSection("tasks")}
                 onResolve={(task, action) => void resolve(task, action)}
                 onRun={() => void runComparison()}
               />
             )}
             {view === "transparency" && (
-              <TransparencyScreen data={transparency} />
+              <TransparencyScreen
+                data={transparency}
+                loaded={transparencyLoaded}
+                busy={sectionLoading === "transparency"}
+                onLoad={() => void loadSection("transparency")}
+              />
             )}
           </div>
           <footer className="mt-9 flex flex-col justify-between gap-2 border-t border-slate-200/80 pt-5 text-[10px] leading-5 text-slate-400 sm:flex-row">
@@ -1526,7 +1736,10 @@ export function ProductApp({
             href={viewHref(item.id)}
             aria-label={item.label}
             aria-current={view === item.id ? "page" : undefined}
-            onClick={() => setView(item.id)}
+            onClick={(event) => {
+              event.preventDefault();
+              navigate(item.id);
+            }}
             className={`grid min-h-12 place-items-center rounded-xl ${view === item.id ? "bg-[#e6f2ef] text-[#123d3a]" : "text-slate-400"}`}
           >
             <Icon name={item.icon} className="size-4" />
@@ -1580,6 +1793,13 @@ export function ProductApp({
               className="mt-6 w-full rounded-xl bg-[#123d3a] px-4 py-3 text-sm font-semibold text-white"
             >
               Start new session
+            </button>
+            <button
+              type="button"
+              onClick={logout}
+              className="mt-2 w-full rounded-xl px-4 py-3 text-sm font-semibold text-slate-500 hover:bg-slate-50"
+            >
+              Log out to landing page
             </button>
           </div>
         </div>

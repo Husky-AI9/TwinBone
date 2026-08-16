@@ -195,6 +195,28 @@
         "title": "CreateSubjectRequest",
         "type": "object"
       },
+      "DashboardResponse": {
+        "additionalProperties": false,
+        "description": "One authenticated snapshot for the explicitly loaded dashboard.",
+        "properties": {
+          "tasks": {
+            "items": {
+              "$ref": "#/components/schemas/ReviewTask"
+            },
+            "title": "Tasks",
+            "type": "array"
+          },
+          "timeline": {
+            "$ref": "#/components/schemas/TimelineResponse"
+          },
+          "transparency": {
+            "$ref": "#/components/schemas/TransparencyResponse"
+          }
+        },
+        "required": ["timeline", "tasks", "transparency"],
+        "title": "DashboardResponse",
+        "type": "object"
+      },
       "DemoDataResetResponse": {
         "additionalProperties": false,
         "properties": {
@@ -1994,6 +2016,63 @@
           }
         },
         "summary": "Create Agent Run"
+      }
+    },
+    "/v1/subjects/{subject_id}/dashboard": {
+      "get": {
+        "description": "Return the on-demand dashboard snapshot in one Lambda invocation.",
+        "operationId": "get_dashboard_v1_subjects__subject_id__dashboard_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "subject_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Subject Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Dashboard"
       }
     },
     "/v1/subjects/{subject_id}/demo-data": {

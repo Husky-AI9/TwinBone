@@ -152,9 +152,16 @@ created a fresh store instance, and returned `NO_ACTION` with
   an unreachable API reports `STATUS UNAVAILABLE` instead of inferring local mock mode.
 - Hosted throttle repair: fresh-Chrome network capture proved the bearer header reached the API,
   while one of three concurrent startup requests received Lambda 429 throttling under the former
-  concurrency cap of two. Dashboard reads now run sequentially, successful panels survive a
-  sibling failure, read-only calls use bounded transient retries, and the demo concurrency cap is
-  five. State-changing calls remain single-attempt, authenticated, authorized, and idempotent.
+  concurrency cap of two. The initial repair serialized dashboard reads and added bounded
+  transient retries; the demo concurrency cap remains five. State-changing calls remain
+  single-attempt, authenticated, authorized, and idempotent.
+- On-demand dashboard optimization: opening `/demo` now performs no API or Lambda request. An
+  explicit **Load record** action retrieves timeline, review tasks, and runtime transparency from
+  one authenticated `/dashboard` snapshot endpoint and stores the result in browser-session
+  storage. Review Tasks and System can also be loaded independently with one request and reuse
+  the session cache on later client-side navigation. Upload, comparison, and review actions no
+  longer trigger an automatic three-read refresh. Logout clears the browser-session cache and
+  returns to the public landing page.
 
 ## Phase status
 

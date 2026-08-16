@@ -158,3 +158,9 @@ export interface Transparency {
   audit_event_count: number;
   safety_boundary: string;
 }
+
+export interface DashboardSnapshot {
+  timeline: Timeline;
+  tasks: ReviewTask[];
+  transparency: Transparency;
+}

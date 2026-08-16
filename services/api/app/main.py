@@ -26,6 +26,7 @@ from services.api.app.schemas import (
     AgentRunResponse,
     CompleteUploadRequest,
     CreateSubjectRequest,
+    DashboardResponse,
     DemoDataResetResponse,
     DocumentResponse,
     MemoryTraceItem,
@@ -185,6 +186,17 @@ def get_subject(subject_id: UUID, principal: PrincipalDependency) -> SubjectSumm
 def get_timeline(subject_id: UUID, principal: PrincipalDependency) -> TimelineResponse:
     require_subject(principal, subject_id)
     return workflow_store.timeline()
+
+
+@app.get("/v1/subjects/{subject_id}/dashboard", response_model=DashboardResponse)
+def get_dashboard(subject_id: UUID, principal: PrincipalDependency) -> DashboardResponse:
+    """Return the on-demand dashboard snapshot in one Lambda invocation."""
+    require_subject(principal, subject_id)
+    return DashboardResponse(
+        timeline=workflow_store.timeline(),
+        tasks=workflow_store.list_tasks(),
+        transparency=workflow_store.transparency(),
+    )
 
 
 @app.delete(
