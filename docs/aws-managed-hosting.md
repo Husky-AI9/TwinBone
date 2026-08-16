@@ -86,13 +86,16 @@ apps/web
 ```
 
 Amplify should detect the root `amplify.yml`. Confirm that
-`AMPLIFY_MONOREPO_APP_ROOT=apps/web`, then add these two non-secret environment variables using
-the App Runner service URL without a trailing slash:
+`AMPLIFY_MONOREPO_APP_ROOT=apps/web`, then add this non-secret server environment variable using
+the API service URL without a trailing slash:
 
 ```text
 BONETWIN_API_URL=https://<app-runner-service>.<region>.awsapprunner.com
-NEXT_PUBLIC_BONETWIN_API_URL=https://<app-runner-service>.<region>.awsapprunner.com
 ```
+
+Do not point the browser directly at the API service. The checked-in build sets
+`NEXT_PUBLIC_BONETWIN_API_URL=/api/backend`, and the narrowly allowlisted Amplify route forwards
+authenticated requests server-side. Presigned S3 uploads still go directly to the private bucket.
 
 Choose **Save and deploy**. Amplify produces the public `amplifyapp.com` URL and automatically
 redeploys future `main` pushes.
@@ -111,7 +114,7 @@ Deploy the App Runner configuration change, then verify:
 2. Upload only one of the included synthetic PDFs.
 3. Confirm the parsed report reaches `READY`.
 4. Run the comparison and open **System**.
-5. Confirm `LOCAL_CLOUD_MCP`, CockroachDB Cloud, LangChain MCP retrieval, and the configured
+5. Confirm `AWS`, CockroachDB Cloud, LangChain MCP retrieval, and the configured
    Bedrock models are visible.
 6. Approve the review, open a new UI session, and confirm the prior decision changes the next
    run.

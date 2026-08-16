@@ -1910,11 +1910,55 @@ class CockroachWorkflowStore:
             )
         live_bedrock = self._bedrock is not None
         cloud_mcp = self._mcp is not None
+        hosted = self._settings.app_env.strip().lower() == "hosted"
+        document_pipeline = (
+            [
+                {
+                    "step": "Storage",
+                    "service": (
+                        "Amazon S3 with AWS KMS encryption and short-lived presigned uploads"
+                    ),
+                },
+                {
+                    "step": "Extraction",
+                    "service": "Application PDF extraction and validated demo parser on AWS Lambda",
+                },
+                {
+                    "step": "Data boundary",
+                    "service": "Application-enforced fabricated demo-document boundary",
+                },
+                {
+                    "step": "Workflow",
+                    "service": "AWS Lambda Function URL with transactional CockroachDB workflow",
+                },
+            ]
+            if hosted
+            else [
+                {
+                    "step": "Storage",
+                    "service": (
+                        "Amazon S3 (SigV4, SSE-KMS, short-lived raw object)"
+                        if self._raw_documents.label == "s3-kms"
+                        else "Temporary local filesystem -> Amazon S3 for hosted deployment"
+                    ),
+                },
+                {"step": "Extraction", "service": "Local PDF extraction -> Amazon Textract"},
+                {
+                    "step": "PHI screening",
+                    "service": "Synthetic-only guard -> Comprehend Medical",
+                },
+                {"step": "Workflow", "service": "Local transaction -> AWS Step Functions"},
+            ]
+        )
         return TransparencyResponse(
             mode=(
-                "LOCAL_CLOUD_MCP"
-                if cloud_mcp
-                else ("LOCAL_BEDROCK" if live_bedrock else "LOCAL_MOCK")
+                "AWS"
+                if hosted
+                else (
+                    "LOCAL_CLOUD_MCP"
+                    if cloud_mcp
+                    else ("LOCAL_BEDROCK" if live_bedrock else "LOCAL_MOCK")
+                )
             ),
             database={
                 "service": ("CockroachDB Cloud" if cloud_mcp else "CockroachDB local single-node"),
@@ -1926,19 +1970,7 @@ class CockroachWorkflowStore:
                     else "Direct local SQL"
                 ),
             },
-            document_pipeline=[
-                {
-                    "step": "Storage",
-                    "service": (
-                        "Amazon S3 (SigV4, SSE-KMS, short-lived raw object)"
-                        if self._raw_documents.label == "s3-kms"
-                        else "Temporary local filesystem -> Amazon S3 for hosted deployment"
-                    ),
-                },
-                {"step": "Extraction", "service": "Local PDF extraction -> Amazon Textract"},
-                {"step": "PHI screening", "service": "Synthetic-only guard -> Comprehend Medical"},
-                {"step": "Workflow", "service": "Local transaction -> AWS Step Functions"},
-            ],
+            document_pipeline=document_pipeline,
             memory_engine=[
                 {
                     "step": "Embedding",

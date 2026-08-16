@@ -162,9 +162,10 @@ The repository includes managed build definitions for a Git-connected deployment
 - Hosted API startup applies migrations and the idempotent synthetic seed to the configured
   CockroachDB Cloud database.
 
-Both services can follow the public GitHub `main` branch and redeploy automatically. The only
-values entered in Amplify are the public App Runner URL. Database, Managed MCP, and Bedrock
-credentials are referenced from AWS Secrets Manager by App Runner.
+Both services can follow the public GitHub `main` branch and redeploy automatically. Amplify needs
+only the server-side API URL in `BONETWIN_API_URL`; `amplify.yml` routes browser requests through
+the allowlisted same-origin `/api/backend` gateway. Database, Managed MCP, and Bedrock credentials
+remain in the API runtime and are never exposed to the browser.
 
 Follow the exact console fields and verification checklist in
 [docs/aws-managed-hosting.md](docs/aws-managed-hosting.md). This minimal path uses live Amazon

@@ -11,8 +11,8 @@ applications:
         build:
           commands:
             - test -n "$BONETWIN_API_URL"
-            - test -n "$NEXT_PUBLIC_BONETWIN_API_URL"
-            - printf 'BONETWIN_API_URL=%s\nNEXT_PUBLIC_BONETWIN_API_URL=%s\nAPP_ENV=hosted\n' "$BONETWIN_API_URL" "$NEXT_PUBLIC_BONETWIN_API_URL" > apps/web/.env.production
+            - export NEXT_PUBLIC_BONETWIN_API_URL=/api/backend
+            - printf 'BONETWIN_API_URL=%s\nNEXT_PUBLIC_BONETWIN_API_URL=/api/backend\nAPP_ENV=hosted\n' "$BONETWIN_API_URL" > apps/web/.env.production
             - pnpm --filter @bonetwin/web build
       artifacts:
         baseDirectory: apps/web/.next

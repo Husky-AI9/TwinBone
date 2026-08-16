@@ -23,7 +23,7 @@ raw-document storage. Amplify SSR is deployed from the connected GitHub `main` b
 Repository-connected deployment preparation is complete: `amplify.yml` builds the pnpm Next.js
 monorepo, and a reproducible Lambda packaging script produces a Linux x86_64 artifact below AWS
 size limits. Hosted startup reads only four allowlisted Cockroach values from Secrets Manager.
-The locked dependency set and 36 non-integration tests pass; lint, strict typing, 19 Vitest tests,
+The locked dependency set and 37 non-integration tests pass; lint, strict typing, 27 Vitest tests,
 the Next.js production build, secret scan, evaluation, and both CDK synth paths also pass.
 Destructive demo reset remains disabled when `APP_ENV=hosted`.
 
@@ -145,6 +145,11 @@ created a fresh store instance, and returned `NO_ACTION` with
   objects under the hosted S3 prefix after the transactional cleanup. Browser API preflight and
   authenticated timeline calls return one exact-origin CORS header from FastAPI; Lambda Function
   URL CORS is intentionally disabled to prevent duplicate headers.
+- Hosted browser repair: an allowlisted same-origin Amplify route now forwards only `/v1/*` and
+  the three approved demo PDFs to the configured backend. It preserves authentication,
+  idempotency, request IDs, JSON/PDF bytes, and safe response headers while excluding cookies and
+  upstream CORS headers. Hosted runtime transparency reports `AWS` and only active services;
+  an unreachable API reports `STATUS UNAVAILABLE` instead of inferring local mock mode.
 
 ## Phase status
 
@@ -168,8 +173,8 @@ created a fresh store instance, and returned `NO_ACTION` with
 
 - Real S3 raw-document storage is active with short-lived SigV4 PUT URLs, SHA-256 checksums,
   SSE-KMS headers, scoped object keys, post-transaction deletion, and one-day lifecycle expiry.
-  Browser CORS allows only both local origins and the Amplify `main` origin. The bucket remains
-  private with public-access blocking enabled.
+  Hosted API calls use the same Amplify origin; only direct presigned S3 PUTs depend on browser
+  CORS. The bucket remains private with public-access blocking enabled.
 
 - The detailed anatomical SVG passed structural, accessibility, live-render, type, lint, and
   production-build checks. The embedded browser surface was unavailable, so final cross-browser

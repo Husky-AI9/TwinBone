@@ -1021,7 +1021,7 @@ function TasksScreen({
   );
 }
 
-function TransparencyScreen({ data }: { data: Transparency | null }) {
+export function TransparencyScreen({ data }: { data: Transparency | null }) {
   const groups = [
     ["Document workflow", data?.document_pipeline ?? []],
     ["Memory Trust Engine", data?.memory_engine ?? []],
@@ -1033,17 +1033,21 @@ function TransparencyScreen({ data }: { data: Transparency | null }) {
           <div>
             <p className="eyebrow">Integration transparency</p>
             <h2 className="mt-1 text-2xl font-semibold">
-              What is real, local, and cloud-ready
+              What is running in this demo
             </h2>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
-              {data?.mode === "LOCAL_CLOUD_MCP"
-                ? "This local UI and API store durable state in CockroachDB Cloud. LangChain calls the managed MCP select_query tool to gate trusted memory retrieval; authorized transactional writes remain in application code."
-                : data?.mode === "LOCAL_BEDROCK"
-                  ? "This local app is calling Amazon Bedrock for Titan embeddings and validated agent decisions. Application authorization and CockroachDB commits remain local."
-                  : "The local workflow uses deterministic offline adapters with the same validated contracts planned for AWS. Cloud usage is never implied when credentials are absent."}
+              {data === null
+                ? "Runtime details are unavailable because the API could not be reached. No deployment mode is inferred from this fallback."
+                : data.mode === "AWS"
+                  ? "This hosted demo runs on AWS Lambda with encrypted Amazon S3 storage and Amazon Bedrock. CockroachDB Cloud is the durable system of record, with allowlisted LangChain MCP retrieval."
+                  : data.mode === "LOCAL_CLOUD_MCP"
+                    ? "This local UI and API store durable state in CockroachDB Cloud. LangChain calls the managed MCP select_query tool to gate trusted memory retrieval; authorized transactional writes remain in application code."
+                    : data.mode === "LOCAL_BEDROCK"
+                      ? "This local app is calling Amazon Bedrock for Titan embeddings and validated agent decisions. Application authorization and CockroachDB commits remain local."
+                      : "The local workflow uses deterministic offline adapters with the same validated contracts planned for AWS. Cloud usage is never implied when credentials are absent."}
             </p>
           </div>
-          <Badge tone="blue">{data?.mode ?? "LOCAL MOCK"}</Badge>
+          <Badge tone="blue">{data?.mode ?? "STATUS UNAVAILABLE"}</Badge>
         </div>
       </Panel>
       <div className="grid gap-5 lg:grid-cols-2">
@@ -1091,7 +1095,9 @@ function TransparencyScreen({ data }: { data: Transparency | null }) {
             ))}
           </div>
           <p className="mt-4 text-xs text-slate-400">
-            {data?.audit_event_count ?? 0} structured API audit events this run
+            {data === null
+              ? "Audit count unavailable"
+              : `${data.audit_event_count} structured API audit events this run`}
           </p>
         </Panel>
       </div>
