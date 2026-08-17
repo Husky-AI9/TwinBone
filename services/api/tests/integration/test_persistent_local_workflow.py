@@ -303,6 +303,69 @@ def test_direct_s3_completion_verifies_persists_and_deletes_raw_object(
     assert int(stored["verification_audits"]) == 1
 
 
+def test_one_demo_record_can_be_purged_and_reuploaded(
+    database_engine: Engine,
+    tmp_path: Path,
+) -> None:
+    with database_engine.begin() as connection:
+        seed_synthetic_workflow(connection)
+    clinician = DEMO_PRINCIPALS["demo-clinician"]
+    content = (
+        Path(__file__).resolve().parents[4] / "output" / "pdf" / "bonetwin-demo-dxa-2026-08-16.pdf"
+    ).read_bytes()
+    digest = sha256(content).hexdigest()
+    store = CockroachWorkflowStore(database_engine, upload_directory=tmp_path)
+    intent = store.create_upload_intent(
+        UploadIntentRequest(
+            original_filename="bonetwin-demo-dxa-2026-08-16.pdf",
+            content_type="application/pdf",
+            byte_size=len(content),
+            sha256=digest,
+        ),
+        "delete-integration-upload-0001",
+        clinician,
+    )
+    store.accept_local_upload(
+        intent.document_id, content, "delete-integration-bytes-0001", clinician
+    )
+    ready = store.complete_upload(
+        intent.document_id,
+        "delete-integration-complete-0001",
+        clinician,
+    )
+    assert ready.report is not None
+
+    deleted = store.delete_demo_record(
+        intent.document_id,
+        "delete-integration-record-0001",
+        clinician,
+    )
+    assert deleted.status == "DELETED"
+    assert deleted.replayed is False
+    assert deleted.deleted_records["scan_reports"] == 1
+    assert all(report.document_id != intent.document_id for report in deleted.timeline.reports)
+    assert any(memory.source_type == "CLINICIAN_CORRECTION" for memory in deleted.timeline.memories)
+    replayed = store.delete_demo_record(
+        intent.document_id,
+        "delete-integration-record-0001",
+        clinician,
+    )
+    assert replayed.replayed is True
+
+    reupload = store.create_upload_intent(
+        UploadIntentRequest(
+            original_filename="bonetwin-demo-dxa-2026-08-16.pdf",
+            content_type="application/pdf",
+            byte_size=len(content),
+            sha256=digest,
+        ),
+        "delete-integration-reupload-0001",
+        clinician,
+    )
+    assert reupload.duplicate is False
+    assert reupload.document_id != intent.document_id
+
+
 def test_live_bedrock_runtime_is_wired_to_durable_store_and_replay_is_free(
     database_engine: Engine,
     tmp_path: Path,

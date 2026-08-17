@@ -11,3 +11,4 @@ decisions will be recorded in the phase where implementation evidence is availab
 - [0006: Opt-in live Amazon Bedrock in local mode](0006-live-bedrock-local-mode.md)
 - [0007: LangChain MCP retrieval with transactional Cloud SQL storage](0007-langchain-cloud-mcp-retrieval.md)
 - [0008: Repository-connected managed AWS hosting](0008-managed-aws-hosting.md)
+- [0009: Audited demo-record deletion for re-upload](0009-demo-record-reupload-deletion.md)

@@ -143,6 +143,54 @@ def test_synthetic_ingestion_is_ready_duplicate_safe_and_recoverable() -> None:
     assert duplicate.json()["duplicate"] is True
     assert duplicate.json()["document_id"] == document_id
 
+    unauthenticated = client.delete(
+        f"/v1/subjects/{DEMO_SUBJECT_ID}/demo-records/{document_id}",
+        headers={"Idempotency-Key": "delete-record-test-0001"},
+    )
+    assert unauthenticated.status_code == 401
+
+    denied = client.delete(
+        f"/v1/subjects/{DEMO_SUBJECT_ID}/demo-records/{document_id}",
+        headers={
+            "Authorization": "Bearer demo-judge",
+            "Idempotency-Key": "delete-record-test-0001",
+        },
+    )
+    assert denied.status_code == 403
+
+    deleted = client.delete(
+        f"/v1/subjects/{DEMO_SUBJECT_ID}/demo-records/{document_id}",
+        headers={**AUTH, "Idempotency-Key": "delete-record-test-0001"},
+    )
+    assert deleted.status_code == 200
+    assert deleted.json()["status"] == "DELETED"
+    assert deleted.json()["replayed"] is False
+    assert deleted.json()["deleted_records"]["scan_reports"] == 1
+    assert all(
+        report["document_id"] != document_id for report in deleted.json()["timeline"]["reports"]
+    )
+
+    replayed = client.delete(
+        f"/v1/subjects/{DEMO_SUBJECT_ID}/demo-records/{document_id}",
+        headers={**AUTH, "Idempotency-Key": "delete-record-test-0001"},
+    )
+    assert replayed.status_code == 200
+    assert replayed.json()["replayed"] is True
+
+    reupload = client.post(
+        f"/v1/subjects/{DEMO_SUBJECT_ID}/documents/upload-intent",
+        headers={**AUTH, "Idempotency-Key": "reupload-after-delete-0001"},
+        json={
+            "original_filename": "bonetwin-demo-dxa-2026.pdf",
+            "content_type": "application/pdf",
+            "byte_size": len(content),
+            "sha256": digest,
+        },
+    )
+    assert reupload.status_code == 200
+    assert reupload.json()["duplicate"] is False
+    assert reupload.json()["document_id"] != document_id
+
 
 def test_demo_pdf_download_and_parser_failure_are_safe() -> None:
     download = client.get("/demo-documents/bonetwin-demo-dxa-2026.pdf")

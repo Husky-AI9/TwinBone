@@ -177,6 +177,12 @@ created a fresh store instance, and returned `NO_ACTION` with
 - Current-date demo fixture: `bonetwin-demo-dxa-2026-08-16.pdf` is unique generated content with
   three parser-valid measurements and new scanner metadata. Poppler rendering, extracted-text
   inspection, parser replay, and SHA-256 comparison against the three earlier reports passed.
+- Repeatable demo uploads: System now loads report records only on explicit request and offers a
+  two-step delete control for one selected report. The mock-auth demo-clinician endpoint is
+  subject-scoped, role-authorized, idempotent, transactional, and audited. It removes the selected
+  document, measurements, and direct indexed evidence while preserving other reports and clinician
+  corrections, then returns the refreshed timeline in the same Lambda invocation so the identical
+  PDF can be uploaded again.
 
 ## Phase status
 

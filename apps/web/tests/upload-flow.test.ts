@@ -83,6 +83,49 @@ describe("browser upload flow", () => {
     expect(request).toHaveBeenCalledTimes(1);
   });
 
+  it("sends a scoped idempotent request when deleting one demo record", async () => {
+    const request = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          subject_id: readyDocument.subject_id,
+          document_id: readyDocument.id,
+          report_id: null,
+          scan_date: null,
+          status: "DELETED",
+          database: "cockroachdb-cloud",
+          deleted_records: { documents: 1 },
+          replayed: false,
+          deleted_at: "2026-08-16T12:00:00Z",
+          timeline: {
+            subject: {},
+            reports: [],
+            memories: [],
+            tasks: [],
+            treatment_events: [],
+          },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+    vi.stubGlobal("fetch", request);
+    const client = new BoneTwinClient({ baseUrl: "http://api.test" });
+
+    const result = await client.deleteDemoRecord(
+      readyDocument.subject_id,
+      readyDocument.id,
+    );
+
+    expect(result.status).toBe("DELETED");
+    expect(request).toHaveBeenCalledTimes(1);
+    const [url, init] = request.mock.calls[0] as [string, RequestInit];
+    expect(url).toContain(`/demo-records/${readyDocument.id}`);
+    expect(init.method).toBe("DELETE");
+    expect(new Headers(init.headers).get("Idempotency-Key")).toBeTruthy();
+    expect(new Headers(init.headers).get("Authorization")).toBe(
+      "Bearer demo-clinician",
+    );
+  });
+
   it("downloads an actual generated PDF instead of substituting preview data", async () => {
     vi.stubGlobal(
       "fetch",

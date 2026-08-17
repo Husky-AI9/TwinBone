@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable, Mapping
-from datetime import timedelta
+from datetime import date, datetime, timedelta
 from hashlib import sha256
 from io import BytesIO
 from pathlib import Path
@@ -41,6 +41,7 @@ from services.api.app.repositories import MemoryRepository
 from services.api.app.schemas import (
     AgentRunResponse,
     DemoDataResetResponse,
+    DemoRecordDeleteResponse,
     DocumentResponse,
     Measurement,
     MemoryTraceItem,
@@ -975,6 +976,237 @@ class CockroachWorkflowStore:
         result = self._transaction(operation)
         self._raw_documents.delete(document_id)
         return result
+
+    def delete_demo_record(
+        self,
+        document_id: UUID,
+        idempotency_key: str,
+        principal: Principal,
+    ) -> DemoRecordDeleteResponse:
+        """Purge one fabricated report and its direct evidence with an audit tombstone."""
+        database_name = (
+            "cockroachdb-cloud"
+            if "cockroachlabs.cloud" in self._settings.reveal_database_url()
+            else "cockroachdb"
+        )
+
+        def operation(
+            connection: Connection,
+        ) -> tuple[UUID | None, date | None, dict[str, int], bool, datetime]:
+            replay = (
+                connection.execute(
+                    text(
+                        """
+                        SELECT resource_id, metadata, created_at
+                        FROM audit_events
+                        WHERE tenant_id = :tenant_id
+                          AND subject_id = :subject_id
+                          AND action = 'DEMO_RECORD_DELETED'
+                          AND request_id = :request_id
+                        ORDER BY created_at DESC
+                        LIMIT 1
+                        """
+                    ),
+                    {
+                        "tenant_id": principal.tenant_id,
+                        "subject_id": DEMO_SUBJECT_ID,
+                        "request_id": idempotency_key,
+                    },
+                )
+                .mappings()
+                .one_or_none()
+            )
+            if replay is not None:
+                if replay["resource_id"] != str(document_id):
+                    raise ValueError("idempotency key was already used for another record")
+                metadata = self._json_object(replay["metadata"])
+                stored_counts = metadata.get("deleted_records", {})
+                if not isinstance(stored_counts, dict):
+                    raise ValueError("record deletion audit metadata is invalid")
+                stored_report_id = metadata.get("report_id")
+                stored_scan_date = metadata.get("scan_date")
+                return (
+                    UUID(str(stored_report_id)) if stored_report_id else None,
+                    date.fromisoformat(str(stored_scan_date)) if stored_scan_date else None,
+                    {str(key): int(value) for key, value in stored_counts.items()},
+                    True,
+                    replay["created_at"],
+                )
+
+            document = (
+                connection.execute(
+                    text(
+                        """
+                        SELECT id, original_filename, sha256
+                        FROM documents
+                        WHERE tenant_id = :tenant_id AND subject_id = :subject_id
+                          AND id = :document_id
+                        FOR UPDATE
+                        """
+                    ),
+                    {
+                        "tenant_id": principal.tenant_id,
+                        "subject_id": DEMO_SUBJECT_ID,
+                        "document_id": document_id,
+                    },
+                )
+                .mappings()
+                .one_or_none()
+            )
+            if document is None:
+                raise KeyError("Demo record not found")
+            report = (
+                connection.execute(
+                    text(
+                        """
+                        SELECT id, scan_date
+                        FROM scan_reports
+                        WHERE tenant_id = :tenant_id AND subject_id = :subject_id
+                          AND document_id = :document_id
+                        """
+                    ),
+                    {
+                        "tenant_id": principal.tenant_id,
+                        "subject_id": DEMO_SUBJECT_ID,
+                        "document_id": document_id,
+                    },
+                )
+                .mappings()
+                .one_or_none()
+            )
+            report_id = report["id"] if report is not None else None
+            scan_date = report["scan_date"] if report is not None else None
+            scope = {
+                "tenant_id": principal.tenant_id,
+                "subject_id": DEMO_SUBJECT_ID,
+                "document_id": document_id,
+                "report_id": report_id,
+            }
+            deleted_records = {
+                "documents": 1,
+                "scan_reports": int(report_id is not None),
+                "measurements": 0,
+                "memories": 0,
+                "agent_run_memory_links": 0,
+                "review_task_evidence_links": 0,
+            }
+            if report_id is not None:
+                counts = (
+                    connection.execute(
+                        text(
+                            """
+                            SELECT
+                              (SELECT count(*) FROM measurements
+                               WHERE tenant_id = :tenant_id AND subject_id = :subject_id
+                                 AND report_id = :report_id) AS measurements,
+                              (SELECT count(*) FROM memories
+                               WHERE tenant_id = :tenant_id AND subject_id = :subject_id
+                                 AND source_id = :report_id) AS memories,
+                              (SELECT count(*) FROM agent_run_memories
+                               WHERE memory_id IN (
+                                 SELECT id FROM memories
+                                 WHERE tenant_id = :tenant_id AND subject_id = :subject_id
+                                   AND source_id = :report_id
+                               )) AS agent_run_memory_links,
+                              (SELECT count(*) FROM review_task_evidence
+                               WHERE memory_id IN (
+                                 SELECT id FROM memories
+                                 WHERE tenant_id = :tenant_id AND subject_id = :subject_id
+                                   AND source_id = :report_id
+                               )) AS review_task_evidence_links
+                            """
+                        ),
+                        scope,
+                    )
+                    .mappings()
+                    .one()
+                )
+                deleted_records.update({key: int(value) for key, value in counts.items()})
+                for statement in [
+                    """DELETE FROM review_task_evidence WHERE memory_id IN (
+                           SELECT id FROM memories
+                           WHERE tenant_id = :tenant_id AND subject_id = :subject_id
+                             AND source_id = :report_id)""",
+                    """DELETE FROM agent_run_memories WHERE memory_id IN (
+                           SELECT id FROM memories
+                           WHERE tenant_id = :tenant_id AND subject_id = :subject_id
+                             AND source_id = :report_id)""",
+                    """DELETE FROM memory_relations
+                       WHERE from_memory_id IN (
+                           SELECT id FROM memories
+                           WHERE tenant_id = :tenant_id AND subject_id = :subject_id
+                             AND source_id = :report_id)
+                          OR to_memory_id IN (
+                           SELECT id FROM memories
+                           WHERE tenant_id = :tenant_id AND subject_id = :subject_id
+                             AND source_id = :report_id)""",
+                    """UPDATE memories SET supersedes_id = NULL
+                       WHERE tenant_id = :tenant_id AND subject_id = :subject_id
+                         AND supersedes_id IN (
+                           SELECT id FROM memories
+                           WHERE tenant_id = :tenant_id AND subject_id = :subject_id
+                             AND source_id = :report_id)""",
+                    """UPDATE memories SET superseded_by_id = NULL
+                       WHERE tenant_id = :tenant_id AND subject_id = :subject_id
+                         AND superseded_by_id IN (
+                           SELECT id FROM memories
+                           WHERE tenant_id = :tenant_id AND subject_id = :subject_id
+                             AND source_id = :report_id)""",
+                    """DELETE FROM memories
+                       WHERE tenant_id = :tenant_id AND subject_id = :subject_id
+                         AND source_id = :report_id""",
+                    """DELETE FROM measurements
+                       WHERE tenant_id = :tenant_id AND subject_id = :subject_id
+                         AND report_id = :report_id""",
+                    """DELETE FROM scan_reports
+                       WHERE tenant_id = :tenant_id AND subject_id = :subject_id
+                         AND id = :report_id""",
+                ]:
+                    connection.execute(text(statement), scope)
+            connection.execute(
+                text(
+                    """
+                    DELETE FROM documents
+                    WHERE tenant_id = :tenant_id AND subject_id = :subject_id
+                      AND id = :document_id
+                    """
+                ),
+                scope,
+            )
+            deleted_at = utc_now()
+            self._write_audit(
+                connection,
+                action="DEMO_RECORD_DELETED",
+                resource_type="document",
+                resource_id=str(document_id),
+                request_id=idempotency_key,
+                actor_type="CLINICIAN",
+                actor_id=str(principal.user_id),
+                metadata={
+                    "scope": "authorized-fabricated-demo-record",
+                    "original_filename": str(document["original_filename"]),
+                    "sha256": str(document["sha256"]),
+                    "report_id": str(report_id) if report_id else None,
+                    "scan_date": scan_date.isoformat() if scan_date else None,
+                    "deleted_records": deleted_records,
+                },
+            )
+            return report_id, scan_date, deleted_records, False, deleted_at
+
+        report_id, scan_date, deleted_records, replayed, deleted_at = self._transaction(operation)
+        self._raw_documents.delete(document_id)
+        return DemoRecordDeleteResponse(
+            subject_id=DEMO_SUBJECT_ID,
+            document_id=document_id,
+            report_id=report_id,
+            scan_date=scan_date,
+            status="DELETED",
+            database=database_name,
+            deleted_records=deleted_records,
+            replayed=replayed,
+            deleted_at=deleted_at,
+            timeline=self.timeline(),
+        )
 
     def clear_demo_data(
         self,

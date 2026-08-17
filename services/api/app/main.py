@@ -28,6 +28,7 @@ from services.api.app.schemas import (
     CreateSubjectRequest,
     DashboardResponse,
     DemoDataResetResponse,
+    DemoRecordDeleteResponse,
     DocumentResponse,
     MemoryTraceItem,
     MeResponse,
@@ -222,6 +223,36 @@ def clear_demo_data(
             detail="Demo data reset is available only to the local demo clinician",
         )
     return workflow_store.clear_demo_data(idempotency_key, principal)
+
+
+@app.delete(
+    "/v1/subjects/{subject_id}/demo-records/{document_id}",
+    response_model=DemoRecordDeleteResponse,
+)
+def delete_demo_record(
+    subject_id: UUID,
+    document_id: UUID,
+    principal: PrincipalDependency,
+    idempotency_key: IdempotencyKey,
+) -> DemoRecordDeleteResponse:
+    """Purge one fabricated demo report so its exact PDF can be uploaded again."""
+    require_subject(principal, subject_id)
+    require_role(principal, UserRole.CLINICIAN, UserRole.ADMIN)
+    if (
+        settings.app_env not in {"local", "hosted"}
+        or settings.auth_mode != "mock"
+        or principal.cognito_subject != "demo-clinician"
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Record deletion is available only to the fabricated demo clinician",
+        )
+    try:
+        return workflow_store.delete_demo_record(document_id, idempotency_key, principal)
+    except KeyError as error:
+        raise not_found("Demo record not found") from error
+    except ValueError as error:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
 
 
 @app.post(

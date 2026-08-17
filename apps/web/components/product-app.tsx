@@ -1193,15 +1193,26 @@ function TasksScreen({
 
 export function TransparencyScreen({
   data,
+  timeline = null,
   loaded = true,
   busy = false,
+  recordBusy = false,
   onLoad = () => undefined,
+  onLoadRecords = () => undefined,
+  onDeleteRecord = () => undefined,
 }: {
   data: Transparency | null;
+  timeline?: Timeline | null;
   loaded?: boolean;
   busy?: boolean;
+  recordBusy?: boolean;
   onLoad?: () => void;
+  onLoadRecords?: () => void;
+  onDeleteRecord?: (documentId: string) => void;
 }) {
+  const [confirmDocumentId, setConfirmDocumentId] = useState<string | null>(
+    null,
+  );
   const groups = [
     ["Document workflow", data?.document_pipeline ?? []],
     ["Memory Trust Engine", data?.memory_engine ?? []],
@@ -1247,6 +1258,103 @@ export function TransparencyScreen({
             )}
           </div>
         </div>
+      </Panel>
+      <Panel className="p-6 sm:p-8">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <p className="eyebrow">Demo record controls</p>
+            <h3 className="mt-1 text-xl font-semibold">
+              Remove one report for a clean re-upload
+            </h3>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
+              This removes only the selected report, its measurements, and its
+              directly indexed evidence. Other reports and clinician corrections
+              remain. An audit tombstone records the action.
+            </p>
+          </div>
+          {timeline === null && (
+            <button
+              type="button"
+              onClick={onLoadRecords}
+              disabled={recordBusy}
+              className="rounded-xl border border-[#8db4ac] bg-white px-4 py-2.5 text-xs font-semibold text-[#2f766e] disabled:opacity-60"
+            >
+              {recordBusy ? "Loading…" : "Load report records"}
+            </button>
+          )}
+        </div>
+        {timeline !== null && (
+          <div className="mt-5 space-y-3">
+            {timeline.reports.length === 0 ? (
+              <div className="rounded-2xl bg-slate-50 p-5 text-sm text-slate-500">
+                No uploaded reports remain. Return to Overview to upload one.
+              </div>
+            ) : (
+              timeline.reports.map((report) => {
+                const confirming = confirmDocumentId === report.document_id;
+                return (
+                  <div
+                    key={report.document_id}
+                    className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:flex-row sm:items-center sm:justify-between"
+                  >
+                    <div>
+                      <p className="text-sm font-semibold text-slate-800">
+                        {new Date(
+                          `${report.scan_date}T00:00:00`,
+                        ).toLocaleDateString(undefined, {
+                          year: "numeric",
+                          month: "long",
+                          day: "numeric",
+                        })}
+                      </p>
+                      <p className="mt-1 text-xs text-slate-500">
+                        {report.report_type} · {report.scanner_manufacturer}{" "}
+                        {report.scanner_model} · {report.measurements.length}{" "}
+                        measurements
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {confirming ? (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => setConfirmDocumentId(null)}
+                            disabled={recordBusy}
+                            className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-600 disabled:opacity-60"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setConfirmDocumentId(null);
+                              onDeleteRecord(report.document_id);
+                            }}
+                            disabled={recordBusy}
+                            className="rounded-xl bg-rose-600 px-4 py-2 text-xs font-semibold text-white disabled:opacity-60"
+                          >
+                            {recordBusy ? "Deleting…" : "Confirm delete"}
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setConfirmDocumentId(report.document_id)
+                          }
+                          disabled={recordBusy}
+                          className="rounded-xl border border-rose-200 bg-white px-4 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-60"
+                        >
+                          Delete record
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        )}
       </Panel>
       <div className="grid gap-5 lg:grid-cols-2">
         {groups.map(([title, items]) => (
@@ -1505,6 +1613,46 @@ export function ProductApp({
       }
     }
     sectionLoadsPending.current.delete(nextView);
+  }
+
+  async function deleteDemoRecord(documentId: string) {
+    setBusy(true);
+    try {
+      const result = await api.deleteDemoRecord(SUBJECT_ID, documentId);
+      setTimeline(result.timeline);
+      setTasks(result.timeline.tasks);
+      setTasksLoaded(true);
+      setRun(null);
+      if (document?.report?.document_id === documentId) setDocument(null);
+      setProcessingEvents([
+        {
+          id: `record-delete-${documentId}`,
+          service: transparency?.database.service ?? "Active workflow database",
+          operation: "Scoped demo record deletion",
+          status: "COMPLETED",
+          detail:
+            "Removed the selected report and direct evidence while retaining an audit tombstone.",
+        },
+      ]);
+      const next: DemoSessionCache = {
+        version: 1,
+        timeline: result.timeline,
+        tasks: result.timeline.tasks,
+      };
+      if (transparencyLoaded && transparency) next.transparency = transparency;
+      writeDemoSessionCache(window.sessionStorage, next);
+      setUsingSessionCache(false);
+      setConnected(true);
+      notify(
+        `${result.scan_date ?? "Selected report"} deleted. Its PDF can now be uploaded again.`,
+      );
+    } catch (error) {
+      notify(
+        error instanceof Error ? error.message : "Record deletion failed.",
+      );
+    } finally {
+      setBusy(false);
+    }
   }
 
   function navigate(nextView: AppView, load = true) {
@@ -1941,9 +2089,15 @@ export function ProductApp({
             {view === "transparency" && (
               <TransparencyScreen
                 data={transparency}
+                timeline={timeline}
                 loaded={transparencyLoaded}
                 busy={sectionLoading === "transparency"}
+                recordBusy={busy}
                 onLoad={() => void loadSection("transparency")}
+                onLoadRecords={() => void loadRecord()}
+                onDeleteRecord={(documentId) =>
+                  void deleteDemoRecord(documentId)
+                }
               />
             )}
           </div>

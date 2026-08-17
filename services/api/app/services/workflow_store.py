@@ -9,6 +9,7 @@ from services.api.app.auth import Principal
 from services.api.app.schemas import (
     AgentRunResponse,
     DemoDataResetResponse,
+    DemoRecordDeleteResponse,
     DocumentResponse,
     ReviewDecisionRequest,
     ReviewTask,
@@ -44,6 +45,13 @@ class WorkflowStore(Protocol):
         idempotency_key: str,
         principal: Principal,
     ) -> DemoDataResetResponse: ...
+
+    def delete_demo_record(
+        self,
+        document_id: UUID,
+        idempotency_key: str,
+        principal: Principal,
+    ) -> DemoRecordDeleteResponse: ...
 
     def create_upload_intent(
         self,

@@ -122,6 +122,19 @@ export interface DemoDataReset {
   reset_at: string;
 }
 
+export interface DemoRecordDelete {
+  subject_id: string;
+  document_id: string;
+  report_id: string | null;
+  scan_date: string | null;
+  status: "DELETED";
+  database: string;
+  deleted_records: Record<string, number>;
+  replayed: boolean;
+  deleted_at: string;
+  timeline: Timeline;
+}
+
 export interface EvidenceReference {
   memory_id: string;
   source_type: string;

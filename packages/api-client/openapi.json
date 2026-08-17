@@ -269,6 +269,87 @@
         "title": "DemoDataResetResponse",
         "type": "object"
       },
+      "DemoRecordDeleteResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "database": {
+            "title": "Database",
+            "type": "string"
+          },
+          "deleted_at": {
+            "format": "date-time",
+            "title": "Deleted At",
+            "type": "string"
+          },
+          "deleted_records": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Deleted Records",
+            "type": "object"
+          },
+          "document_id": {
+            "format": "uuid",
+            "title": "Document Id",
+            "type": "string"
+          },
+          "replayed": {
+            "title": "Replayed",
+            "type": "boolean"
+          },
+          "report_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Report Id"
+          },
+          "scan_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scan Date"
+          },
+          "status": {
+            "const": "DELETED",
+            "title": "Status",
+            "type": "string"
+          },
+          "subject_id": {
+            "format": "uuid",
+            "title": "Subject Id",
+            "type": "string"
+          },
+          "timeline": {
+            "$ref": "#/components/schemas/TimelineResponse"
+          }
+        },
+        "required": [
+          "subject_id",
+          "document_id",
+          "report_id",
+          "scan_date",
+          "status",
+          "database",
+          "deleted_records",
+          "replayed",
+          "deleted_at",
+          "timeline"
+        ],
+        "title": "DemoRecordDeleteResponse",
+        "type": "object"
+      },
       "DocumentResponse": {
         "additionalProperties": false,
         "properties": {
@@ -2186,6 +2267,86 @@
           }
         },
         "summary": "Clear Demo Data"
+      }
+    },
+    "/v1/subjects/{subject_id}/demo-records/{document_id}": {
+      "delete": {
+        "description": "Purge one fabricated demo report so its exact PDF can be uploaded again.",
+        "operationId": "delete_demo_record_v1_subjects__subject_id__demo_records__document_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "subject_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Subject Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Document Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable key for replay-safe state changes",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "description": "Stable key for replay-safe state changes",
+              "maxLength": 128,
+              "minLength": 8,
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DemoRecordDeleteResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Demo Record"
       }
     },
     "/v1/subjects/{subject_id}/documents/upload-intent": {

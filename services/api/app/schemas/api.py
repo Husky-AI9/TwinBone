@@ -156,6 +156,19 @@ class DemoDataResetResponse(ApiModel):
     reset_at: datetime
 
 
+class DemoRecordDeleteResponse(ApiModel):
+    subject_id: UUID
+    document_id: UUID
+    report_id: UUID | None
+    scan_date: date | None
+    status: Literal["DELETED"]
+    database: str
+    deleted_records: dict[str, int]
+    replayed: bool
+    deleted_at: datetime
+    timeline: TimelineResponse
+
+
 class CompleteUploadRequest(ApiModel):
     acknowledge_synthetic_only: Literal[True]
 

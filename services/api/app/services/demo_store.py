@@ -28,6 +28,7 @@ from services.api.app.auth import DEMO_SUBJECT_ID, Principal
 from services.api.app.schemas import (
     AgentRunResponse,
     DemoDataResetResponse,
+    DemoRecordDeleteResponse,
     DocumentResponse,
     Measurement,
     MemoryTraceItem,
@@ -57,6 +58,7 @@ class MemoryState:
     valid_from: datetime | None = None
     valid_until: datetime | None = None
     superseded_by_id: UUID | None = None
+    source_id: UUID | None = None
 
 
 class DemoStore:
@@ -146,6 +148,7 @@ class DemoStore:
                 confidence=0.98,
                 created_at=created,
                 valid_from=created,
+                source_id=UUID("41000000-0000-4000-8000-000000000002"),
             ),
             MemoryState(
                 id=UUID("51000000-0000-4000-8000-000000000003"),
@@ -435,6 +438,7 @@ class DemoStore:
                         verification_status="AWAITING_REVIEW",
                         confidence=0.98,
                         created_at=utc_now(),
+                        source_id=report.id,
                     )
                 )
                 updated = document.model_copy(
@@ -546,6 +550,99 @@ class DemoStore:
             )
             self._documents[document_id] = updated
             return updated
+
+    def delete_demo_record(
+        self,
+        document_id: UUID,
+        idempotency_key: str,
+        principal: Principal,
+    ) -> DemoRecordDeleteResponse:
+        """Transactionally purge one fabricated report and keep a replay-safe tombstone."""
+        with self._lock:
+            replay = next(
+                (
+                    event
+                    for event in self._audit_events
+                    if event.get("action") == "DEMO_RECORD_DELETED"
+                    and event.get("request_id") == idempotency_key
+                ),
+                None,
+            )
+            if replay is not None:
+                if replay.get("resource_id") != str(document_id):
+                    raise ValueError("idempotency key was already used for another record")
+                report_id = replay.get("report_id")
+                scan_date = replay.get("scan_date")
+                return DemoRecordDeleteResponse(
+                    subject_id=DEMO_SUBJECT_ID,
+                    document_id=document_id,
+                    report_id=UUID(str(report_id)) if report_id else None,
+                    scan_date=date.fromisoformat(str(scan_date)) if scan_date else None,
+                    status="DELETED",
+                    database="in-memory-test-double",
+                    deleted_records=dict(replay["deleted_records"]),
+                    replayed=True,
+                    deleted_at=datetime.fromisoformat(str(replay["deleted_at"])),
+                    timeline=self.timeline(),
+                )
+
+            report = next(
+                (item for item in self._reports if item.document_id == document_id),
+                None,
+            )
+            document = self._documents.get(document_id)
+            if report is None and document is None:
+                raise KeyError("Demo record not found")
+
+            report_id = report.id if report is not None else None
+            deleted_memory_ids = {
+                memory.id
+                for memory in self._memories
+                if report_id is not None and memory.source_id == report_id
+            }
+            deleted_records = {
+                "documents": int(document is not None),
+                "scan_reports": int(report is not None),
+                "measurements": len(report.measurements) if report is not None else 0,
+                "memories": len(deleted_memory_ids),
+            }
+            self._reports = [item for item in self._reports if item.document_id != document_id]
+            self._memories = [
+                memory for memory in self._memories if memory.id not in deleted_memory_ids
+            ]
+            self._documents.pop(document_id, None)
+            self._upload_blobs.pop(document_id, None)
+            self._upload_keys = {
+                key: value for key, value in self._upload_keys.items() if value != document_id
+            }
+            self._document_hashes = {
+                key: value for key, value in self._document_hashes.items() if value != document_id
+            }
+            deleted_at = utc_now()
+            self._audit_events.append(
+                {
+                    "action": "DEMO_RECORD_DELETED",
+                    "request_id": idempotency_key,
+                    "resource_id": str(document_id),
+                    "report_id": str(report_id) if report_id else None,
+                    "scan_date": report.scan_date.isoformat() if report is not None else None,
+                    "actor": str(principal.user_id),
+                    "deleted_records": deleted_records,
+                    "deleted_at": deleted_at.isoformat(),
+                }
+            )
+            return DemoRecordDeleteResponse(
+                subject_id=DEMO_SUBJECT_ID,
+                document_id=document_id,
+                report_id=report_id,
+                scan_date=report.scan_date if report is not None else None,
+                status="DELETED",
+                database="in-memory-test-double",
+                deleted_records=deleted_records,
+                replayed=False,
+                deleted_at=deleted_at,
+                timeline=self.timeline(),
+            )
 
     def memory_trace(self) -> list[MemoryTraceItem]:
         now = utc_now()

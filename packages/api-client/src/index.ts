@@ -8,6 +8,7 @@ import type {
   AgentRun,
   DashboardSnapshot,
   DemoDataReset,
+  DemoRecordDelete,
   DocumentStatus,
   Me,
   ProcessingEvent,
@@ -148,6 +149,17 @@ export class BoneTwinClient {
   clearDemoData(subjectId: string): Promise<DemoDataReset> {
     return this.request(
       `/v1/subjects/${subjectId}/demo-data`,
+      { method: "DELETE" },
+      crypto.randomUUID(),
+    );
+  }
+
+  deleteDemoRecord(
+    subjectId: string,
+    documentId: string,
+  ): Promise<DemoRecordDelete> {
+    return this.request(
+      `/v1/subjects/${subjectId}/demo-records/${documentId}`,
       { method: "DELETE" },
       crypto.randomUUID(),
     );
