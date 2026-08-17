@@ -42,6 +42,37 @@ export async function loadDashboardData(
   return api.dashboard(subjectId);
 }
 
+export function mergeProcessingEvents(
+  current: ProcessingEvent[],
+  incoming: ProcessingEvent[],
+  operationId: string,
+): ProcessingEvent[] {
+  return incoming.reduce<ProcessingEvent[]>((events, event) => {
+    const scopedEvent = {
+      ...event,
+      id: `${operationId}:${event.id}`,
+    };
+    const existing = events.findIndex((item) => item.id === scopedEvent.id);
+    if (existing < 0) return [...events, scopedEvent];
+    return events.map((item, index) =>
+      index === existing ? scopedEvent : item,
+    );
+  }, current);
+}
+
+export function replaceProcessingOperationEvents(
+  current: ProcessingEvent[],
+  incoming: ProcessingEvent[],
+  operationId: string,
+): ProcessingEvent[] {
+  const operationPrefix = `${operationId}:`;
+  return mergeProcessingEvents(
+    current.filter((event) => !event.id.startsWith(operationPrefix)),
+    incoming,
+    operationId,
+  );
+}
+
 const navItems: Array<{ id: AppView; label: string; icon: string }> = [
   { id: "overview", label: "Overview", icon: "grid" },
   { id: "report", label: "Parsed report", icon: "document" },
@@ -469,6 +500,13 @@ export function ProcessingConsole({
   events: ProcessingEvent[];
   busy: boolean;
 }) {
+  const logRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const log = logRef.current;
+    if (log) log.scrollTop = log.scrollHeight;
+  }, [events, busy]);
+
   return (
     <section className="overflow-hidden rounded-[26px] border border-slate-800 bg-[#071411] text-slate-200 shadow-[0_22px_60px_rgba(7,20,17,.24)]">
       <div className="flex items-center justify-between border-b border-white/10 bg-[#0b1e1a] px-5 py-3">
@@ -482,6 +520,7 @@ export function ProcessingConsole({
         </p>
       </div>
       <div
+        ref={logRef}
         aria-label="Backend processing events"
         aria-live="polite"
         className="h-[290px] space-y-3 overflow-y-auto overscroll-contain p-5 font-mono text-[11px] leading-5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-emerald-300"
@@ -1635,6 +1674,7 @@ export function ProductApp({
   const [sessionCount, setSessionCount] = useState(1);
   const recordLoadPending = useRef(false);
   const sectionLoadsPending = useRef(new Set<AppView>());
+  const processingOperationSequence = useRef(0);
 
   useEffect(() => {
     const cached = readDemoSessionCache(window.sessionStorage);
@@ -1766,6 +1806,7 @@ export function ProductApp({
 
   async function deleteDemoRecord(documentId: string) {
     setBusy(true);
+    const operationId = nextProcessingOperationId("delete");
     try {
       const result = await api.deleteDemoRecord(SUBJECT_ID, documentId);
       setTimeline(result.timeline);
@@ -1773,7 +1814,7 @@ export function ProductApp({
       setTasksLoaded(true);
       setRun(null);
       if (document?.report?.document_id === documentId) setDocument(null);
-      setProcessingEvents([
+      recordProcessingEvent(
         {
           id: `record-delete-${documentId}`,
           service: transparency?.database.service ?? "Active workflow database",
@@ -1782,7 +1823,8 @@ export function ProductApp({
           detail:
             "Removed the selected report and direct evidence while retaining an audit tombstone.",
         },
-      ]);
+        operationId,
+      );
       const next: DemoSessionCache = {
         version: 1,
         timeline: result.timeline,
@@ -1815,23 +1857,44 @@ export function ProductApp({
     window.setTimeout(() => setToast(null), 3600);
   }
 
-  function recordProcessingEvent(event: ProcessingEvent) {
-    setProcessingEvents((current) => {
-      const existing = current.findIndex((item) => item.id === event.id);
-      if (existing < 0) return [...current, event];
-      return current.map((item, index) => (index === existing ? event : item));
-    });
+  function nextProcessingOperationId(kind: string) {
+    processingOperationSequence.current += 1;
+    return `${kind}-${processingOperationSequence.current}`;
+  }
+
+  function recordProcessingEvents(
+    events: ProcessingEvent[],
+    operationId: string,
+  ) {
+    setProcessingEvents((current) =>
+      mergeProcessingEvents(current, events, operationId),
+    );
+  }
+
+  function recordProcessingEvent(event: ProcessingEvent, operationId: string) {
+    recordProcessingEvents([event], operationId);
+  }
+
+  function completeProcessingOperation(
+    events: ProcessingEvent[],
+    operationId: string,
+  ) {
+    setProcessingEvents((current) =>
+      replaceProcessingOperationEvents(current, events, operationId),
+    );
   }
 
   async function processFile(file: File) {
     setBusy(true);
     setSelectedFile(file);
-    setProcessingEvents([]);
+    const operationId = nextProcessingOperationId("upload");
+    const recordOperationEvent = (event: ProcessingEvent) =>
+      recordProcessingEvent(event, operationId);
     try {
       const result = await api.uploadDocument(
         SUBJECT_ID,
         file,
-        recordProcessingEvent,
+        recordOperationEvent,
       );
       setDocument(result);
       setConnected(true);
@@ -1846,7 +1909,7 @@ export function ProductApp({
           version: 1,
           ...snapshot,
         });
-        recordProcessingEvent({
+        recordOperationEvent({
           id: "post-upload-dashboard",
           service: snapshot.transparency.database.service,
           operation: "Anatomical record refresh",
@@ -1856,7 +1919,7 @@ export function ProductApp({
         });
       } catch {
         invalidateRecordCache();
-        recordProcessingEvent({
+        recordOperationEvent({
           id: "post-upload-dashboard",
           service: "BoneTwin API",
           operation: "Anatomical record refresh",
@@ -1870,7 +1933,7 @@ export function ProductApp({
       );
     } catch (error) {
       setConnected(false);
-      recordProcessingEvent({
+      recordOperationEvent({
         id: "upload-failed",
         service: "BoneTwin API",
         operation: "Report processing",
@@ -1925,30 +1988,34 @@ export function ProductApp({
 
   async function runComparison() {
     setBusy(true);
-    setProcessingEvents([
-      {
-        id: "comparison-cockroach-retrieval",
-        service:
-          transparency?.database.service ??
-          (LOCAL_API ? "Configured database" : "CockroachDB Cloud"),
-        operation: "Scoped trusted-memory retrieval",
-        status: "RUNNING",
-        detail:
-          "Retrieving subject-scoped candidates and applying trust filters.",
-      },
-      {
-        id: "comparison-bedrock-decision",
-        service: LOCAL_API ? "Configured agent runtime" : "Amazon Bedrock",
-        operation: "Strict structured decision",
-        status: "RUNNING",
-        detail:
-          "Waiting for a schema-constrained, evidence-authorized response.",
-      },
-    ]);
+    const operationId = nextProcessingOperationId("comparison");
+    recordProcessingEvents(
+      [
+        {
+          id: "comparison-cockroach-retrieval",
+          service:
+            transparency?.database.service ??
+            (LOCAL_API ? "Configured database" : "CockroachDB Cloud"),
+          operation: "Scoped trusted-memory retrieval",
+          status: "RUNNING",
+          detail:
+            "Retrieving subject-scoped candidates and applying trust filters.",
+        },
+        {
+          id: "comparison-bedrock-decision",
+          service: LOCAL_API ? "Configured agent runtime" : "Amazon Bedrock",
+          operation: "Strict structured decision",
+          status: "RUNNING",
+          detail:
+            "Waiting for a schema-constrained, evidence-authorized response.",
+        },
+      ],
+      operationId,
+    );
     try {
       const result = await api.runComparison(SUBJECT_ID);
       setRun(result);
-      setProcessingEvents(result.processing_events);
+      completeProcessingOperation(result.processing_events, operationId);
       setConnected(true);
       invalidateTaskCache();
       notify(
@@ -1957,14 +2024,19 @@ export function ProductApp({
           : "Trusted comparison is ready.",
       );
     } catch (error) {
-      recordProcessingEvent({
-        id: "comparison-failed",
-        service: "BoneTwin API",
-        operation: "Trusted comparison",
-        status: "FAILED",
-        detail:
-          error instanceof Error ? error.message : "Agent workflow failed.",
-      });
+      completeProcessingOperation(
+        [
+          {
+            id: "comparison-failed",
+            service: "BoneTwin API",
+            operation: "Trusted comparison",
+            status: "FAILED",
+            detail:
+              error instanceof Error ? error.message : "Agent workflow failed.",
+          },
+        ],
+        operationId,
+      );
       notify(
         error instanceof Error
           ? error.message

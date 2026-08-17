@@ -8,8 +8,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   ComparisonOverviewResult,
+  mergeProcessingEvents,
   ProcessingConsole,
   ProductApp,
+  replaceProcessingOperationEvents,
 } from "../components/product-app";
 
 const events: ProcessingEvent[] = [
@@ -30,6 +32,74 @@ const events: ProcessingEvent[] = [
 ];
 
 describe("backend processing console", () => {
+  it("appends new operations while updating events only within their own operation", () => {
+    const firstRunning = mergeProcessingEvents(
+      [],
+      [
+        {
+          ...events[0],
+          id: "shared-step",
+          status: "RUNNING",
+        },
+      ],
+      "upload-1",
+    );
+    const firstCompleted = mergeProcessingEvents(
+      firstRunning,
+      [
+        {
+          ...events[0],
+          id: "shared-step",
+          status: "COMPLETED",
+        },
+      ],
+      "upload-1",
+    );
+    const withComparison = mergeProcessingEvents(
+      firstCompleted,
+      [
+        {
+          ...events[1],
+          id: "shared-step",
+          status: "RUNNING",
+        },
+      ],
+      "comparison-2",
+    );
+
+    expect(firstCompleted).toHaveLength(1);
+    expect(firstCompleted[0]).toMatchObject({
+      id: "upload-1:shared-step",
+      status: "COMPLETED",
+    });
+    expect(withComparison).toHaveLength(2);
+    expect(withComparison.map((event) => event.id)).toEqual([
+      "upload-1:shared-step",
+      "comparison-2:shared-step",
+    ]);
+    expect(withComparison[0]?.status).toBe("COMPLETED");
+    expect(withComparison[1]?.status).toBe("RUNNING");
+
+    const completedComparison = replaceProcessingOperationEvents(
+      withComparison,
+      [
+        {
+          ...events[1],
+          id: "backend-final-step",
+          status: "COMPLETED",
+        },
+      ],
+      "comparison-2",
+    );
+
+    expect(completedComparison).toHaveLength(2);
+    expect(completedComparison[0]?.id).toBe("upload-1:shared-step");
+    expect(completedComparison[1]).toMatchObject({
+      id: "comparison-2:backend-final-step",
+      status: "COMPLETED",
+    });
+  });
+
   it("renders actual service events in the terminal-style panel", () => {
     const markup = renderToStaticMarkup(
       <ProcessingConsole events={events} busy={false} />,
