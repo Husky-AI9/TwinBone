@@ -12,6 +12,7 @@ describe("native PDF picker", () => {
         selectedFile={null}
         busy={false}
         onFileChange={vi.fn()}
+        onUpload={vi.fn()}
       />,
     );
 

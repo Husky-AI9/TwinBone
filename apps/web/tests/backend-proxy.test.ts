@@ -133,6 +133,28 @@ describe("hosted same-origin API proxy", () => {
     );
   });
 
+  it("allows the current-date generated demo report", async () => {
+    const request = vi.fn().mockResolvedValue(
+      new Response("%PDF-today", {
+        headers: { "Content-Type": "application/pdf" },
+      }),
+    );
+    vi.stubGlobal("fetch", request);
+
+    const response = await GET(
+      new Request(
+        "https://app.example.test/api/backend/demo-documents/bonetwin-demo-dxa-2026-08-16.pdf",
+      ),
+      context(["demo-documents", "bonetwin-demo-dxa-2026-08-16.pdf"]),
+    );
+
+    const [url] = request.mock.calls[0] as [URL];
+    expect(url.toString()).toBe(
+      "https://api.example.test/demo-documents/bonetwin-demo-dxa-2026-08-16.pdf",
+    );
+    expect(response.status).toBe(200);
+  });
+
   it("blocks every route outside the narrow allowlist", async () => {
     const request = vi.fn();
     vi.stubGlobal("fetch", request);

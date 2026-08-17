@@ -18,10 +18,17 @@ from services.agent.bonetwin_agent.policies.safety import SAFETY_NOTICE
 
 
 class FakeBedrockClient:
-    def __init__(self, *, decision: dict[str, object] | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        decision: dict[str, object] | None = None,
+        decisions: list[dict[str, object]] | None = None,
+    ) -> None:
         self.decision = decision
+        self.decisions = list(decisions or [])
         self.invoke_request: dict[str, Any] | None = None
         self.converse_request: dict[str, Any] | None = None
+        self.converse_requests: list[dict[str, Any]] = []
 
     def invoke_model(self, **kwargs: Any) -> dict[str, Any]:
         self.invoke_request = kwargs
@@ -40,7 +47,9 @@ class FakeBedrockClient:
 
     def converse(self, **kwargs: Any) -> dict[str, Any]:
         self.converse_request = kwargs
-        if self.decision is None:
+        self.converse_requests.append(kwargs)
+        decision = self.decisions.pop(0) if self.decisions else self.decision
+        if decision is None:
             return {
                 "stopReason": "end_turn",
                 "output": {"message": {"content": [{"text": "free form is rejected"}]}},
@@ -54,7 +63,7 @@ class FakeBedrockClient:
                             "toolUse": {
                                 "toolUseId": "tool-1",
                                 "name": DECISION_TOOL_NAME,
-                                "input": self.decision,
+                                "input": decision,
                             }
                         }
                     ]
@@ -183,3 +192,24 @@ def test_free_form_or_out_of_scope_bedrock_output_is_rejected() -> None:
     )
     with pytest.raises(BedrockInvocationError, match="excluded by application policy"):
         excluded_runtime.decide(context)
+
+
+def test_invalid_evidence_id_is_retried_once_with_stricter_instruction() -> None:
+    context = _context()
+    invalid = _decision(context)
+    cited = invalid["cited_memory_ids"]
+    assert isinstance(cited, list)
+    cited[0] = str(uuid4())
+    client = FakeBedrockClient(decisions=[invalid, _decision(context)])
+    runtime = BedrockRuntime(
+        client,
+        chat_model_id="test-chat-model",
+        embedding_model_id="amazon.titan-embed-text-v2:0",
+    )
+
+    decision = runtime.decide(context)
+
+    assert decision.evidence[0].memory_id == context.evidence[0].memory_id
+    assert len(client.converse_requests) == 2
+    retry_prompt = client.converse_requests[1]["messages"][0]["content"][0]["text"]
+    assert "previous proposal failed application validation" in retry_prompt

@@ -122,6 +122,14 @@ class UploadIntentResponse(ApiModel):
     duplicate: bool
 
 
+class ProcessingEvent(ApiModel):
+    id: str
+    service: str
+    operation: str
+    status: Literal["RUNNING", "COMPLETED", "SAFE_FALLBACK", "FAILED"]
+    detail: str
+
+
 class DocumentResponse(ApiModel):
     id: UUID
     subject_id: UUID
@@ -135,6 +143,7 @@ class DocumentResponse(ApiModel):
     report: Report | None = None
     failure_code: str | None = None
     failure_message: str | None = None
+    processing_events: list[ProcessingEvent] = Field(default_factory=list)
     created_at: datetime
 
 
@@ -168,6 +177,7 @@ class AgentRunResponse(ApiModel):
     review_task_id: UUID | None
     created_at: datetime
     persisted_review_applied: bool
+    processing_events: list[ProcessingEvent] = Field(default_factory=list)
 
 
 class ReviewDecisionRequest(ApiModel):

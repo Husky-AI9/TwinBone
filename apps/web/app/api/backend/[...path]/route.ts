@@ -2,6 +2,7 @@ const DEMO_DOCUMENTS = new Set([
   "bonetwin-demo-dxa-2019.pdf",
   "bonetwin-demo-dxa-2022.pdf",
   "bonetwin-demo-dxa-2026.pdf",
+  "bonetwin-demo-dxa-2026-08-16.pdf",
 ]);
 
 const REQUEST_HEADERS = [

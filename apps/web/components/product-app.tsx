@@ -1,12 +1,14 @@
 "use client";
 
-import { BoneTwinClient, type DemoReportYear } from "@bonetwin/api-client";
+import { BoneTwinClient, type DemoReportKey } from "@bonetwin/api-client";
 import type {
   AgentRun,
   DashboardSnapshot,
   DocumentStatus,
   Measurement,
   MemoryTraceItem,
+  ProcessingEvent,
+  Report,
   ReviewTask,
   Timeline,
   Transparency,
@@ -156,12 +158,14 @@ function BoneSitePreview({
   selected,
   onSelect,
   timeline,
+  latestReport,
 }: {
   selected: BoneSiteId;
   onSelect: (site: BoneSiteId) => void;
   timeline: Timeline | null;
+  latestReport: Report | null;
 }) {
-  const sites = displayedBoneSites(timeline);
+  const sites = displayedBoneSites(timeline, latestReport);
   const site = sites.find((item) => item.id === selected) ?? sites[0];
   return (
     <Panel className="overflow-hidden">
@@ -253,10 +257,18 @@ function BoneSitePreview({
   );
 }
 
-function displayedBoneSites(timeline: Timeline | null) {
-  const reports = [...(timeline?.reports ?? [])].sort((left, right) =>
-    right.scan_date.localeCompare(left.scan_date),
-  );
+function displayedBoneSites(
+  timeline: Timeline | null,
+  latestReport: Report | null,
+) {
+  const reports = [...(timeline?.reports ?? [])];
+  if (
+    latestReport &&
+    !reports.some((report) => report.id === latestReport.id)
+  ) {
+    reports.push(latestReport);
+  }
+  reports.sort((left, right) => right.scan_date.localeCompare(left.scan_date));
   const matchMeasurement = (site: BoneSiteId, measurement: Measurement) =>
     ({
       "left-total-hip": measurement.region === "TOTAL_HIP",
@@ -450,10 +462,85 @@ export function TimelinePanel({ timeline }: { timeline: Timeline | null }) {
   );
 }
 
+export function ProcessingConsole({
+  events,
+  busy,
+}: {
+  events: ProcessingEvent[];
+  busy: boolean;
+}) {
+  return (
+    <section className="overflow-hidden rounded-[26px] border border-slate-800 bg-[#071411] text-slate-200 shadow-[0_22px_60px_rgba(7,20,17,.24)]">
+      <div className="flex items-center justify-between border-b border-white/10 bg-[#0b1e1a] px-5 py-3">
+        <div className="flex items-center gap-2">
+          <span className="size-2.5 rounded-full bg-rose-400" />
+          <span className="size-2.5 rounded-full bg-amber-300" />
+          <span className="size-2.5 rounded-full bg-emerald-400" />
+        </div>
+        <p className="font-mono text-[10px] uppercase tracking-[.16em] text-emerald-200/70">
+          Backend processing trace
+        </p>
+      </div>
+      <div
+        aria-live="polite"
+        className="min-h-[290px] space-y-3 overflow-y-auto p-5 font-mono text-[11px] leading-5"
+      >
+        <p className="text-emerald-300">$ bonetwin workflow --source-backed</p>
+        {events.length === 0 ? (
+          <div className="space-y-2 text-slate-500">
+            <p>[idle] No backend operation has been requested.</p>
+            <p>
+              [ready] Upload a report or run Trusted Comparison to see real
+              service events.
+            </p>
+          </div>
+        ) : (
+          events.map((event) => {
+            const serviceTone = event.service.includes("CockroachDB")
+              ? "text-cyan-300"
+              : event.service.includes("Bedrock") ||
+                  event.service.includes("AWS")
+                ? "text-amber-300"
+                : "text-emerald-300";
+            const statusTone =
+              event.status === "FAILED"
+                ? "text-rose-300"
+                : event.status === "SAFE_FALLBACK"
+                  ? "text-amber-300"
+                  : event.status === "RUNNING"
+                    ? "text-sky-300"
+                    : "text-emerald-300";
+            return (
+              <div key={event.id} className="border-l border-white/10 pl-3">
+                <p>
+                  <span className={statusTone}>
+                    [{event.status.toLowerCase()}]
+                  </span>{" "}
+                  <span className={serviceTone}>{event.service}</span>{" "}
+                  <span className="text-slate-300">:: {event.operation}</span>
+                </p>
+                <p className="text-slate-500">{event.detail}</p>
+              </div>
+            );
+          })
+        )}
+        {busy && <p className="animate-pulse text-sky-300">_ processing</p>}
+      </div>
+      <div className="border-t border-white/10 px-5 py-3 text-[10px] text-slate-500">
+        Completed entries are returned by the active backend contract; no cloud
+        service is claimed when a local adapter is used.
+      </div>
+    </section>
+  );
+}
+
 function Overview({
   timeline,
+  latestReport,
+  processingEvents,
   onLoadRecord,
   onRun,
+  onUploadSelected,
   selectedFile,
   onFileChange,
   onDemoUpload,
@@ -461,15 +548,21 @@ function Overview({
   busy,
 }: {
   timeline: Timeline | null;
+  latestReport: Report | null;
+  processingEvents: ProcessingEvent[];
   onLoadRecord: () => void;
   onRun: () => void;
+  onUploadSelected: () => void;
   selectedFile: File | null;
   onFileChange: (file: File | null) => void;
-  onDemoUpload: (year: DemoReportYear) => void;
+  onDemoUpload: (report: DemoReportKey) => void;
   uploadKey: string;
   busy: boolean;
 }) {
   const [site, setSite] = useState<BoneSiteId>("left-total-hip");
+  useEffect(() => {
+    if (latestReport) setSite("left-total-hip");
+  }, [latestReport]);
   const latestDate = timeline?.subject.latest_scan_date
     ? new Date(`${timeline.subject.latest_scan_date}T00:00:00`)
     : null;
@@ -558,18 +651,26 @@ function Overview({
             </h2>
             <p className="mt-2 text-sm leading-6 text-slate-500">
               Use a generated demo or select a fully de-identified PDF.
-              Successful processing opens the extracted result automatically.
+              Successful processing refreshes the anatomical preview; the full
+              extraction remains available under Parsed report.
             </p>
             <div className="mt-4 flex flex-wrap gap-2">
-              {([2019, 2022, 2026] as DemoReportYear[]).map((year) => (
+              {(
+                [
+                  { key: 2019, label: "2019" },
+                  { key: 2022, label: "2022" },
+                  { key: 2026, label: "Apr 2026" },
+                  { key: "2026-08-16", label: "Today" },
+                ] as Array<{ key: DemoReportKey; label: string }>
+              ).map((report) => (
                 <button
-                  key={year}
+                  key={report.key}
                   type="button"
-                  onClick={() => onDemoUpload(year)}
+                  onClick={() => onDemoUpload(report.key)}
                   disabled={busy}
                   className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-[#2f766e] hover:border-[#8db4ac] hover:bg-white disabled:opacity-50"
                 >
-                  Process {year} demo
+                  Process {report.label} demo
                 </button>
               ))}
             </div>
@@ -580,6 +681,7 @@ function Overview({
             selectedFile={selectedFile}
             busy={busy}
             onFileChange={onFileChange}
+            onUpload={onUploadSelected}
           />
         </div>
       </Panel>
@@ -588,9 +690,10 @@ function Overview({
           selected={site}
           onSelect={setSite}
           timeline={timeline}
+          latestReport={latestReport}
         />
         <div className="grid gap-5">
-          <TimelinePanel timeline={timeline} />
+          <ProcessingConsole events={processingEvents} busy={busy} />
           <section className="overflow-hidden rounded-[26px] bg-[#123d3a] p-6 text-white shadow-[0_22px_60px_rgba(18,61,58,.2)]">
             <div className="flex items-start justify-between">
               <div>
@@ -631,18 +734,25 @@ export function NativePdfPicker({
   selectedFile,
   busy,
   onFileChange,
+  onUpload,
 }: {
   inputId: string;
   uploadKey: string;
   selectedFile: File | null;
   busy: boolean;
   onFileChange: (file: File | null) => void;
+  onUpload: () => void;
 }) {
   return (
     <form
       action="/api/local-upload"
       method="post"
       encType="multipart/form-data"
+      onSubmit={(event) => {
+        if (!selectedFile) return;
+        event.preventDefault();
+        onUpload();
+      }}
       className="rounded-2xl border border-[#b8d3cd] bg-[#f4faf8] p-4 text-left"
     >
       <input type="hidden" name="idempotency_key" value={uploadKey} />
@@ -1250,6 +1360,9 @@ export function ProductApp({
   const [document, setDocument] = useState<DocumentStatus | null>(
     initialDocument,
   );
+  const [processingEvents, setProcessingEvents] = useState<ProcessingEvent[]>(
+    initialDocument?.processing_events ?? [],
+  );
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [run, setRun] = useState<AgentRun | null>(null);
   const [tasks, setTasks] = useState<ReviewTask[]>([]);
@@ -1290,16 +1403,35 @@ export function ProductApp({
     writeDemoSessionCache(window.sessionStorage, { ...current, ...patch });
   }
 
-  function invalidateRecordCache(updatedTasks?: ReviewTask[]) {
+  function invalidateRecordCache() {
     setTimeline(null);
-    if (updatedTasks) {
-      setTasks(updatedTasks);
-      setTasksLoaded(true);
-    } else {
-      setTasks([]);
-      setTasksLoaded(false);
+    setTasks([]);
+    setTasksLoaded(false);
+    const next: DemoSessionCache = { version: 1 };
+    if (transparencyLoaded && transparency) next.transparency = transparency;
+    writeDemoSessionCache(window.sessionStorage, next);
+    setUsingSessionCache(false);
+  }
+
+  function invalidateTaskCache(updatedTasks?: ReviewTask[]) {
+    setTasks(updatedTasks ?? []);
+    setTasksLoaded(updatedTasks !== undefined);
+    let cachedTimeline = timeline;
+    if (updatedTasks && timeline) {
+      cachedTimeline = {
+        ...timeline,
+        tasks: updatedTasks,
+        subject: {
+          ...timeline.subject,
+          open_task_count: updatedTasks.filter(
+            (task) => task.status === "AWAITING_REVIEW",
+          ).length,
+        },
+      };
+      setTimeline(cachedTimeline);
     }
     const next: DemoSessionCache = { version: 1 };
+    if (cachedTimeline) next.timeline = cachedTimeline;
     if (updatedTasks) next.tasks = updatedTasks;
     if (transparencyLoaded && transparency) next.transparency = transparency;
     writeDemoSessionCache(window.sessionStorage, next);
@@ -1386,17 +1518,84 @@ export function ProductApp({
     window.setTimeout(() => setToast(null), 3600);
   }
 
-  async function uploadDemo(year: DemoReportYear) {
+  function recordProcessingEvent(event: ProcessingEvent) {
+    setProcessingEvents((current) => {
+      const existing = current.findIndex((item) => item.id === event.id);
+      if (existing < 0) return [...current, event];
+      return current.map((item, index) => (index === existing ? event : item));
+    });
+  }
+
+  async function processFile(file: File) {
     setBusy(true);
+    setSelectedFile(file);
+    setProcessingEvents([]);
     try {
-      const file = await api.demoDocument(year);
-      setSelectedFile(file);
-      const result = await api.uploadDocument(SUBJECT_ID, file);
+      const result = await api.uploadDocument(
+        SUBJECT_ID,
+        file,
+        recordProcessingEvent,
+      );
       setDocument(result);
       setConnected(true);
-      invalidateRecordCache();
-      notify(`${file.name} is ready. Showing parsed evidence.`);
-      navigate("report", false);
+      try {
+        const snapshot = await loadDashboardData(api);
+        setTimeline(snapshot.timeline);
+        setTasks(snapshot.tasks);
+        setTasksLoaded(true);
+        setTransparency(snapshot.transparency);
+        setTransparencyLoaded(true);
+        writeDemoSessionCache(window.sessionStorage, {
+          version: 1,
+          ...snapshot,
+        });
+        recordProcessingEvent({
+          id: "post-upload-dashboard",
+          service: snapshot.transparency.database.service,
+          operation: "Anatomical record refresh",
+          status: "COMPLETED",
+          detail:
+            "Loaded the newly committed measurements into the bone-site preview.",
+        });
+      } catch {
+        invalidateRecordCache();
+        recordProcessingEvent({
+          id: "post-upload-dashboard",
+          service: "BoneTwin API",
+          operation: "Anatomical record refresh",
+          status: "SAFE_FALLBACK",
+          detail:
+            "The report is ready and shown directly; use Load record to refresh history.",
+        });
+      }
+      notify(
+        `${file.name} is ready. Anatomical source data has been refreshed.`,
+      );
+    } catch (error) {
+      setConnected(false);
+      recordProcessingEvent({
+        id: "upload-failed",
+        service: "BoneTwin API",
+        operation: "Report processing",
+        status: "FAILED",
+        detail:
+          error instanceof Error ? error.message : "Report processing failed.",
+      });
+      notify(
+        error instanceof Error
+          ? error.message
+          : "Report workflow is unavailable.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function uploadDemo(report: DemoReportKey) {
+    setBusy(true);
+    try {
+      const file = await api.demoDocument(report);
+      await processFile(file);
     } catch (error) {
       setConnected(false);
       notify(
@@ -1404,7 +1603,6 @@ export function ProductApp({
           ? error.message
           : "Generated report workflow is unavailable.",
       );
-    } finally {
       setBusy(false);
     }
   }
@@ -1430,11 +1628,32 @@ export function ProductApp({
 
   async function runComparison() {
     setBusy(true);
+    setProcessingEvents([
+      {
+        id: "comparison-cockroach-retrieval",
+        service:
+          transparency?.database.service ??
+          (LOCAL_API ? "Configured database" : "CockroachDB Cloud"),
+        operation: "Scoped trusted-memory retrieval",
+        status: "RUNNING",
+        detail:
+          "Retrieving subject-scoped candidates and applying trust filters.",
+      },
+      {
+        id: "comparison-bedrock-decision",
+        service: LOCAL_API ? "Configured agent runtime" : "Amazon Bedrock",
+        operation: "Strict structured decision",
+        status: "RUNNING",
+        detail:
+          "Waiting for a schema-constrained, evidence-authorized response.",
+      },
+    ]);
     try {
       const result = await api.runComparison(SUBJECT_ID);
       setRun(result);
+      setProcessingEvents(result.processing_events);
       setConnected(true);
-      invalidateRecordCache();
+      invalidateTaskCache();
       navigate("trace", false);
       notify(
         result.persisted_review_applied
@@ -1442,7 +1661,14 @@ export function ProductApp({
           : "Trusted comparison is ready.",
       );
     } catch (error) {
-      setConnected(false);
+      recordProcessingEvent({
+        id: "comparison-failed",
+        service: "BoneTwin API",
+        operation: "Trusted comparison",
+        status: "FAILED",
+        detail:
+          error instanceof Error ? error.message : "Agent workflow failed.",
+      });
       notify(
         error instanceof Error
           ? error.message
@@ -1477,7 +1703,7 @@ export function ProductApp({
       const updatedTasks = tasks.map((item) =>
         item.id === updated.id ? updated : item,
       );
-      invalidateRecordCache(updatedTasks);
+      invalidateTaskCache(updatedTasks);
       setConnected(true);
       notify(
         action === "reject"
@@ -1680,8 +1906,13 @@ export function ProductApp({
             {view === "overview" && (
               <Overview
                 timeline={timeline}
+                latestReport={document?.report ?? null}
+                processingEvents={processingEvents}
                 onLoadRecord={() => void loadRecord()}
                 onRun={() => void runComparison()}
+                onUploadSelected={() => {
+                  if (selectedFile) void processFile(selectedFile);
+                }}
                 selectedFile={selectedFile}
                 onFileChange={chooseFile}
                 onDemoUpload={(year) => void uploadDemo(year)}

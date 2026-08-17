@@ -31,6 +31,7 @@ from services.api.app.schemas import (
     DocumentResponse,
     Measurement,
     MemoryTraceItem,
+    ProcessingEvent,
     Report,
     ReviewDecisionRequest,
     ReviewTask,
@@ -442,6 +443,38 @@ class DemoStore:
                         "progress": 100,
                         "status_message": "Report parsed, screened, and indexed",
                         "report": report,
+                        "processing_events": [
+                            ProcessingEvent(
+                                id="local-storage-verified",
+                                service="Local document storage",
+                                operation="Object integrity verification",
+                                status="COMPLETED",
+                                detail=(
+                                    "The PDF signature, byte count, and SHA-256 matched "
+                                    "the upload intent."
+                                ),
+                            ),
+                            ProcessingEvent(
+                                id="local-parser",
+                                service="BoneTwin parser",
+                                operation="Source-backed measurement extraction",
+                                status="COMPLETED",
+                                detail=(
+                                    "The approved report contract produced validated "
+                                    "measurements and evidence."
+                                ),
+                            ),
+                            ProcessingEvent(
+                                id="local-memory",
+                                service="Local memory adapter",
+                                operation="Evidence commit",
+                                status="COMPLETED",
+                                detail=(
+                                    "Stored the report, source measurements, memory, "
+                                    "and workflow state."
+                                ),
+                            ),
+                        ],
                     }
                 )
             except (OSError, ValueError) as error:
@@ -453,6 +486,18 @@ class DemoStore:
                         "failure_code": "PARSER_VALIDATION_FAILED",
                         "failure_message": str(error),
                         "report": None,
+                        "processing_events": [
+                            ProcessingEvent(
+                                id="local-parser",
+                                service="BoneTwin parser",
+                                operation="Source-backed measurement extraction",
+                                status="FAILED",
+                                detail=(
+                                    "The report contract failed safely; no partial "
+                                    "measurements were stored."
+                                ),
+                            )
+                        ],
                     }
                 )
             self._documents[document_id] = updated
@@ -676,6 +721,22 @@ class DemoStore:
                 review_task_id=task_id,
                 created_at=utc_now(),
                 persisted_review_applied=prior_review,
+                processing_events=[
+                    ProcessingEvent(
+                        id="comparison-local-retrieval",
+                        service="Local memory adapter",
+                        operation="Scoped trusted-memory retrieval",
+                        status="COMPLETED",
+                        detail=f"Retrieved and policy-filtered {len(trace)} memory candidates.",
+                    ),
+                    ProcessingEvent(
+                        id="comparison-local-decision",
+                        service="Local agent adapter",
+                        operation="Strict structured decision",
+                        status="COMPLETED",
+                        detail="The decision passed evidence, action, and safety validation.",
+                    ),
+                ],
             )
             self._runs[run_id] = result
             self._run_keys[idempotency_key] = run_id

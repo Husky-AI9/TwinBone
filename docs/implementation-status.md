@@ -162,6 +162,21 @@ created a fresh store instance, and returned `NO_ACTION` with
   the session cache on later client-side navigation. Upload, comparison, and review actions no
   longer trigger an automatic three-read refresh. Logout clears the browser-session cache and
   returns to the public landing page.
+- Upload and comparison observability repair: the former longitudinal chart slot now renders a
+  terminal-style trace built from real client transport events and backend-completed operation
+  contracts. Hosted uploads explicitly show AWS Lambda, encrypted Amazon S3 verification,
+  Amazon Bedrock Titan embedding, the CockroachDB Cloud serializable commit, and raw-object
+  cleanup. A successful upload refreshes the combined dashboard once and immediately selects the
+  new left-total-hip source measurement in the anatomical preview.
+- Bedrock comparison resilience: CloudWatch identified the generic comparison 500 as a correctly
+  rejected Bedrock citation outside the authorized CockroachDB evidence set. Evidence validation
+  remains strict. The runtime now retries one invalid structured proposal with a narrower citation
+  instruction; if it still fails, application code returns the bounded deterministic decision
+  over the already-authorized evidence and marks the operation `SAFE_FALLBACK` in the visible
+  trace instead of returning an opaque 500.
+- Current-date demo fixture: `bonetwin-demo-dxa-2026-08-16.pdf` is unique generated content with
+  three parser-valid measurements and new scanner metadata. Poppler rendering, extracted-text
+  inspection, parser replay, and SHA-256 comparison against the three earlier reports passed.
 
 ## Phase status
 

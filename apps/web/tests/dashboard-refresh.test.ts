@@ -25,11 +25,14 @@ describe("on-demand dashboard loading", () => {
       transparency: {},
     } as unknown as DashboardSnapshot;
     const fetchMock = vi.fn(
-      async () =>
-        new Response(JSON.stringify(snapshot), {
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        void input;
+        void init;
+        return new Response(JSON.stringify(snapshot), {
           status: 200,
           headers: { "Content-Type": "application/json" },
-        }),
+        });
+      },
     );
     vi.stubGlobal("fetch", fetchMock);
 
@@ -40,9 +43,9 @@ describe("on-demand dashboard loading", () => {
     await expect(client.dashboard("subject-1")).resolves.toEqual(snapshot);
 
     expect(fetchMock).toHaveBeenCalledOnce();
-    const [url, init] = fetchMock.mock.calls[0];
+    const [url, init] = fetchMock.mock.calls[0]!;
     expect(url).toBe("/api/backend/v1/subjects/subject-1/dashboard");
-    expect((init.headers as Headers).get("Authorization")).toBe(
+    expect(new Headers(init?.headers).get("Authorization")).toBe(
       "Bearer demo-clinician",
     );
     vi.unstubAllGlobals();

@@ -125,6 +125,11 @@ def test_synthetic_ingestion_is_ready_duplicate_safe_and_recoverable() -> None:
     assert completed.status_code == 200
     assert completed.json()["status"] == "READY"
     assert len(completed.json()["report"]["measurements"]) == 3
+    assert {event["service"] for event in completed.json()["processing_events"]} == {
+        "Local document storage",
+        "BoneTwin parser",
+        "Local memory adapter",
+    }
     duplicate = client.post(
         f"/v1/subjects/{DEMO_SUBJECT_ID}/documents/upload-intent",
         headers={**AUTH, "Idempotency-Key": "different-upload-key"},
@@ -143,6 +148,9 @@ def test_demo_pdf_download_and_parser_failure_are_safe() -> None:
     download = client.get("/demo-documents/bonetwin-demo-dxa-2026.pdf")
     assert download.status_code == 200
     assert download.content.startswith(b"%PDF-")
+    today = client.get("/demo-documents/bonetwin-demo-dxa-2026-08-16.pdf")
+    assert today.status_code == 200
+    assert today.content.startswith(b"%PDF-")
 
     content = b"BONETWIN SYNTHETIC DXA\nSYNTHETIC DEMO - NOT A MEDICAL RECORD\nFAIL_PARSE"
     digest = sha256(content).hexdigest()
@@ -186,6 +194,7 @@ def test_review_decision_is_remembered_across_new_agent_run() -> None:
     )
     assert first.status_code == 200
     assert first.json()["persisted_review_applied"] is False
+    assert first.json()["processing_events"][0]["operation"] == ("Scoped trusted-memory retrieval")
     task_id = first.json()["review_task_id"]
     judge = client.post(
         f"/v1/tasks/{task_id}/approve",

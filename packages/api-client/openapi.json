@@ -116,6 +116,13 @@
             "title": "Persisted Review Applied",
             "type": "boolean"
           },
+          "processing_events": {
+            "items": {
+              "$ref": "#/components/schemas/ProcessingEvent"
+            },
+            "title": "Processing Events",
+            "type": "array"
+          },
           "request_type": {
             "title": "Request Type",
             "type": "string"
@@ -308,6 +315,13 @@
           "original_filename": {
             "title": "Original Filename",
             "type": "string"
+          },
+          "processing_events": {
+            "items": {
+              "$ref": "#/components/schemas/ProcessingEvent"
+            },
+            "title": "Processing Events",
+            "type": "array"
           },
           "progress": {
             "title": "Progress",
@@ -609,6 +623,35 @@
           "created_at"
         ],
         "title": "MemoryTraceItem",
+        "type": "object"
+      },
+      "ProcessingEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "operation": {
+            "title": "Operation",
+            "type": "string"
+          },
+          "service": {
+            "title": "Service",
+            "type": "string"
+          },
+          "status": {
+            "enum": ["RUNNING", "COMPLETED", "SAFE_FALLBACK", "FAILED"],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": ["id", "service", "operation", "status", "detail"],
+        "title": "ProcessingEvent",
         "type": "object"
       },
       "ProposedAction": {

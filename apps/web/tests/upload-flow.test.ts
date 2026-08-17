@@ -14,6 +14,15 @@ const readyDocument = {
   report: null,
   failure_code: null,
   failure_message: null,
+  processing_events: [
+    {
+      id: "backend-cockroach-commit",
+      service: "CockroachDB Cloud",
+      operation: "Serializable evidence commit",
+      status: "COMPLETED" as const,
+      detail: "Stored report evidence atomically.",
+    },
+  ],
   created_at: "2026-08-02T00:00:00Z",
 };
 
@@ -88,13 +97,13 @@ describe("browser upload flow", () => {
     );
 
     const client = new BoneTwinClient({ baseUrl: "http://api.test" });
-    const file = await client.demoDocument(2026);
+    const file = await client.demoDocument("2026-08-16");
 
-    expect(file.name).toBe("bonetwin-demo-dxa-2026.pdf");
+    expect(file.name).toBe("bonetwin-demo-dxa-2026-08-16.pdf");
     expect(file.type).toBe("application/pdf");
     expect(file.size).toBeGreaterThan(0);
     expect(fetch).toHaveBeenCalledWith(
-      "http://api.test/demo-documents/bonetwin-demo-dxa-2026.pdf",
+      "http://api.test/demo-documents/bonetwin-demo-dxa-2026-08-16.pdf",
     );
   });
 
@@ -134,8 +143,13 @@ describe("browser upload flow", () => {
     const file = new File(["%PDF-upload"], readyDocument.original_filename, {
       type: "application/pdf",
     });
+    const progress = vi.fn();
 
-    const result = await client.uploadDocument(readyDocument.subject_id, file);
+    const result = await client.uploadDocument(
+      readyDocument.subject_id,
+      file,
+      progress,
+    );
 
     expect(result.status).toBe("READY");
     expect(result.status_message).toBe("report is ready");
@@ -143,6 +157,12 @@ describe("browser upload flow", () => {
     expect(request.mock.calls[0]?.[0]).toContain("/documents/upload-intent");
     expect(request.mock.calls[1]?.[0]).toContain("/v1/local-uploads/");
     expect(request.mock.calls[2]?.[0]).toContain("/complete-upload");
+    expect(progress).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "backend-cockroach-commit",
+        service: "CockroachDB Cloud",
+      }),
+    );
     for (const [, init] of request.mock.calls) {
       const headers = new Headers(init?.headers);
       expect(headers.get("Authorization")).toBe("Bearer demo-clinician");

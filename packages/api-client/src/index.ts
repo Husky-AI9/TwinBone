@@ -10,6 +10,7 @@ import type {
   DemoDataReset,
   DocumentStatus,
   Me,
+  ProcessingEvent,
   ReviewTask,
   SubjectSummary,
   Timeline,
@@ -32,6 +33,8 @@ export type ClientOptions = {
 };
 
 export type DemoReportYear = 2019 | 2022 | 2026;
+export type DemoReportKey = DemoReportYear | "2026-08-16";
+export type UploadProgressHandler = (event: ProcessingEvent) => void;
 
 export function removeSyntheticWord<T>(value: T): T {
   if (typeof value === "string") {
@@ -150,8 +153,8 @@ export class BoneTwinClient {
     );
   }
 
-  async demoDocument(year: DemoReportYear): Promise<File> {
-    const filename = `bonetwin-demo-dxa-${year}.pdf`;
+  async demoDocument(report: DemoReportKey): Promise<File> {
+    const filename = `bonetwin-demo-dxa-${report}.pdf`;
     const response = await fetch(`${this.baseUrl}/demo-documents/${filename}`);
     if (!response.ok) {
       throw new ApiError("Demo report is unavailable", response.status);
@@ -163,9 +166,34 @@ export class BoneTwinClient {
     return new File([content], filename, { type: "application/pdf" });
   }
 
-  async uploadDocument(subjectId: string, file: File): Promise<DocumentStatus> {
+  async uploadDocument(
+    subjectId: string,
+    file: File,
+    onProgress?: UploadProgressHandler,
+  ): Promise<DocumentStatus> {
     const key = crypto.randomUUID();
+    onProgress?.({
+      id: "browser-hash",
+      service: "Browser",
+      operation: "SHA-256 integrity check",
+      status: "RUNNING",
+      detail: "Calculating the report fingerprint before upload.",
+    });
     const sha256 = await digestSha256(file);
+    onProgress?.({
+      id: "browser-hash",
+      service: "Browser",
+      operation: "SHA-256 integrity check",
+      status: "COMPLETED",
+      detail: "Report fingerprint calculated locally.",
+    });
+    onProgress?.({
+      id: "lambda-intent",
+      service: "BoneTwin API",
+      operation: "Authenticated upload intent",
+      status: "RUNNING",
+      detail: "Requesting a scoped, idempotent upload destination.",
+    });
     const intent = await this.request<{
       document_id: string;
       upload_url: string;
@@ -184,12 +212,32 @@ export class BoneTwinClient {
       },
       key,
     );
+    onProgress?.({
+      id: "lambda-intent",
+      service: "BoneTwin API",
+      operation: "Authenticated upload intent",
+      status: "COMPLETED",
+      detail: intent.duplicate
+        ? "Existing document fingerprint found; duplicate storage was skipped."
+        : "Upload intent authorized for this subject.",
+    });
     if (!intent.duplicate) {
       const uploadHeaders = new Headers(intent.upload_headers);
       if (!uploadHeaders.has("Content-Type")) {
         uploadHeaders.set("Content-Type", file.type || "application/pdf");
       }
       if (/^https?:\/\//i.test(intent.upload_url)) {
+        const signedS3Upload = new URL(intent.upload_url).hostname.includes(
+          ".s3.",
+        );
+        onProgress?.({
+          id: "document-upload",
+          service: signedS3Upload ? "Amazon S3" : "Document storage",
+          operation: "Encrypted report upload",
+          status: "RUNNING",
+          detail:
+            "Sending the exact selected PDF bytes to the authorized destination.",
+        });
         const uploadResponse = await fetch(intent.upload_url, {
           method: "PUT",
           headers: uploadHeaders,
@@ -201,7 +249,23 @@ export class BoneTwinClient {
             uploadResponse.status,
           );
         }
+        onProgress?.({
+          id: "document-upload",
+          service: signedS3Upload ? "Amazon S3" : "Document storage",
+          operation: "Encrypted report upload",
+          status: "COMPLETED",
+          detail: signedS3Upload
+            ? "Encrypted S3 object upload completed with signed integrity headers."
+            : "Report bytes reached the document store.",
+        });
       } else {
+        onProgress?.({
+          id: "document-upload",
+          service: "Local document storage",
+          operation: "Report upload",
+          status: "RUNNING",
+          detail: "Sending the selected PDF bytes to the local adapter.",
+        });
         await this.request(
           intent.upload_url,
           {
@@ -211,9 +275,24 @@ export class BoneTwinClient {
           },
           `bytes-${key}`,
         );
+        onProgress?.({
+          id: "document-upload",
+          service: "Local document storage",
+          operation: "Report upload",
+          status: "COMPLETED",
+          detail: "Local report bytes passed the integrity contract.",
+        });
       }
     }
-    return this.request(
+    onProgress?.({
+      id: "backend-ingestion",
+      service: "BoneTwin API",
+      operation: "Source processing",
+      status: "RUNNING",
+      detail:
+        "Waiting for parsing, Bedrock embedding, and the CockroachDB transaction.",
+    });
+    const result = await this.request<DocumentStatus>(
       `/v1/documents/${intent.document_id}/complete-upload`,
       {
         method: "POST",
@@ -221,6 +300,15 @@ export class BoneTwinClient {
       },
       `complete-${key}`,
     );
+    onProgress?.({
+      id: "backend-ingestion",
+      service: "BoneTwin API",
+      operation: "Source processing",
+      status: result.status === "READY" ? "COMPLETED" : "FAILED",
+      detail: result.status_message,
+    });
+    for (const event of result.processing_events ?? []) onProgress?.(event);
+    return result;
   }
 
   runComparison(subjectId: string): Promise<AgentRun> {

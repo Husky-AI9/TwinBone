@@ -26,6 +26,7 @@ class Measurement:
 @dataclass(frozen=True, slots=True)
 class DemoReport:
     year: int
+    filename: str
     scan_date: str
     facility: str
     manufacturer: str
@@ -37,6 +38,7 @@ class DemoReport:
 REPORTS = (
     DemoReport(
         year=2019,
+        filename="bonetwin-demo-dxa-2019.pdf",
         scan_date="2019-05-03",
         facility="Synthetic Imaging Center A",
         manufacturer="Hologic",
@@ -50,6 +52,7 @@ REPORTS = (
     ),
     DemoReport(
         year=2022,
+        filename="bonetwin-demo-dxa-2022.pdf",
         scan_date="2022-06-08",
         facility="Synthetic Imaging Center A",
         manufacturer="Hologic",
@@ -63,6 +66,7 @@ REPORTS = (
     ),
     DemoReport(
         year=2026,
+        filename="bonetwin-demo-dxa-2026.pdf",
         scan_date="2026-04-12",
         facility="Synthetic Imaging Center B",
         manufacturer="Hologic",
@@ -73,6 +77,20 @@ REPORTS = (
             Measurement("Lumbar Spine L1-L4", 0.811, -2.1, -0.8, 0.97, False),
         ),
         note="Scanner metadata differs from the prior synthetic study; clinician review requested.",
+    ),
+    DemoReport(
+        year=2026,
+        filename="bonetwin-demo-dxa-2026-08-16.pdf",
+        scan_date="2026-08-16",
+        facility="Synthetic Imaging Center C",
+        manufacturer="GE Healthcare",
+        model="Lunar iDXA (synthetic)",
+        measurements=(
+            Measurement("Left Total Hip", 0.735, -1.7, -0.5, 0.99, True),
+            Measurement("Left Femoral Neck", 0.661, -1.8, -0.6, 0.96, True),
+            Measurement("Lumbar Spine L1-L4", 0.807, -2.1, -0.8, 0.91, False),
+        ),
+        note="New scanner metadata and lumbar exclusion are flagged for source-backed review.",
     ),
 )
 
@@ -177,7 +195,7 @@ def generate_report(report: DemoReport, destination: Path) -> None:
 def main() -> int:
     OUTPUT_DIRECTORY.mkdir(parents=True, exist_ok=True)
     for report in REPORTS:
-        path = OUTPUT_DIRECTORY / f"bonetwin-demo-dxa-{report.year}.pdf"
+        path = OUTPUT_DIRECTORY / report.filename
         generate_report(report, path)
         print(f"Generated {path.relative_to(ROOT)}")
     return 0

@@ -88,6 +88,14 @@ export interface Timeline {
   treatment_events: Array<Record<string, unknown>>;
 }
 
+export interface ProcessingEvent {
+  id: string;
+  service: string;
+  operation: string;
+  status: "RUNNING" | "COMPLETED" | "SAFE_FALLBACK" | "FAILED";
+  detail: string;
+}
+
 export interface DocumentStatus {
   id: string;
   subject_id: string;
@@ -101,6 +109,7 @@ export interface DocumentStatus {
   report: Report | null;
   failure_code: string | null;
   failure_message: string | null;
+  processing_events: ProcessingEvent[];
   created_at: string;
 }
 
@@ -147,6 +156,7 @@ export interface AgentRun {
   review_task_id: string | null;
   created_at: string;
   persisted_review_applied: boolean;
+  processing_events: ProcessingEvent[];
 }
 
 export interface Transparency {

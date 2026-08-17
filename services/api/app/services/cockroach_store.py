@@ -19,6 +19,7 @@ from sqlalchemy.engine import RowMapping
 from services.agent.bonetwin_agent.bedrock import (
     BedrockDecisionContext,
     BedrockEvidence,
+    BedrockInvocationError,
     BedrockRuntime,
 )
 from services.agent.bonetwin_agent.policies.safety import SAFETY_NOTICE, assert_safe_text
@@ -43,6 +44,7 @@ from services.api.app.schemas import (
     DocumentResponse,
     Measurement,
     MemoryTraceItem,
+    ProcessingEvent,
     Report,
     ReviewDecisionRequest,
     ReviewTask,
@@ -103,10 +105,94 @@ class CockroachWorkflowStore:
             return self._bedrock.embedding_model_id
         return "bonetwin-deterministic-local-v1"
 
+    @property
+    def _database_service(self) -> str:
+        if self._mcp is not None or self._settings.app_env.strip().lower() == "hosted":
+            return "CockroachDB Cloud"
+        return "CockroachDB local single-node"
+
     def _embed(self, content: str) -> list[float]:
         if self._bedrock is not None:
             return self._bedrock.embed(content)
         return deterministic_embedding(content)
+
+    def _document_processing_events(self, status: str) -> list[ProcessingEvent]:
+        if status not in {"READY", "FAILED"}:
+            return []
+        storage_service = (
+            "Amazon S3" if self._raw_documents.label == "s3-kms" else "Local document storage"
+        )
+        events: list[ProcessingEvent] = []
+        if self._settings.app_env.strip().lower() == "hosted":
+            events.append(
+                ProcessingEvent(
+                    id="backend-lambda",
+                    service="AWS Lambda",
+                    operation="Authenticated ingestion workflow",
+                    status="COMPLETED" if status == "READY" else "FAILED",
+                    detail="Executed the scoped upload completion contract in the hosted API.",
+                )
+            )
+        events.extend(
+            [
+                ProcessingEvent(
+                    id="backend-storage-verified",
+                    service=storage_service,
+                    operation="Object integrity verification",
+                    status="COMPLETED",
+                    detail="PDF signature, byte count, and SHA-256 matched the upload intent.",
+                ),
+                ProcessingEvent(
+                    id="backend-parser",
+                    service="BoneTwin parser",
+                    operation="Source-backed measurement extraction",
+                    status="COMPLETED" if status == "READY" else "FAILED",
+                    detail=(
+                        "The approved report contract produced validated measurements and evidence."
+                        if status == "READY"
+                        else "Parser failed safely; no partial measurements were committed."
+                    ),
+                ),
+            ]
+        )
+        if status == "READY":
+            events.extend(
+                [
+                    ProcessingEvent(
+                        id="backend-embedding",
+                        service=(
+                            "Amazon Bedrock" if self._bedrock is not None else "Local embedder"
+                        ),
+                        operation="Trusted-memory embedding",
+                        status="COMPLETED",
+                        detail=(
+                            "Generated a validated 1,024-dimensional vector with "
+                            f"{self._embedding_model_id}."
+                        ),
+                    ),
+                    ProcessingEvent(
+                        id="backend-cockroach-commit",
+                        service=self._database_service,
+                        operation="Serializable evidence commit",
+                        status="COMPLETED",
+                        detail=(
+                            "Stored the report, original measurements, memory vector, "
+                            "and audit event atomically."
+                        ),
+                    ),
+                    ProcessingEvent(
+                        id="backend-raw-cleanup",
+                        service=storage_service,
+                        operation="Raw-object cleanup",
+                        status="COMPLETED",
+                        detail=(
+                            "Removed the temporary raw object after the durable "
+                            "transaction committed."
+                        ),
+                    ),
+                ]
+            )
+        return events
 
     def _transaction(self, operation: Callable[[Connection], T]) -> T:
         return run_transaction(
@@ -415,6 +501,7 @@ class CockroachWorkflowStore:
             ),
             failure_code=row["failure_code"],
             failure_message=row["failure_message"],
+            processing_events=self._document_processing_events(str(row["status"])),
             created_at=row["created_at"],
         )
 
@@ -1220,6 +1307,52 @@ class CockroachWorkflowStore:
             ],
         )
 
+    @staticmethod
+    def _deterministic_agent_decision(
+        *,
+        evidence: list[EvidenceReference],
+        hip_series: list[str],
+        prior_review: bool,
+    ) -> AgentDecision:
+        return AgentDecision(
+            summary=(
+                f"The comparable left total hip series is {', '.join(hip_series)} g/cm2. "
+                "Lumbar values marked for review remain visible as source evidence "
+                "but are excluded from the longitudinal comparison."
+            ),
+            uncertainty=(
+                "Scanner metadata still needs human confirmation. Measurement differences "
+                "are presented without diagnostic interpretation."
+            ),
+            safety_notice=SAFETY_NOTICE,
+            evidence=evidence,
+            proposed_action=ProposedAction(
+                action_type="NO_ACTION" if prior_review else "CREATE_CLINICIAN_REVIEW",
+                title=(
+                    "Prior review decision remains active"
+                    if prior_review
+                    else "Confirm scanner comparability"
+                ),
+                rationale=(
+                    "A verified reviewer decision is already stored and was reused."
+                    if prior_review
+                    else "The latest report and prior report list different scanner metadata."
+                ),
+                payload={"focus": "scanner metadata", "site": "left total hip"},
+                requires_human_approval=not prior_review,
+            ),
+            memory_impact_statement=(
+                "A verified prior review and the lumbar correction were retrieved from "
+                "CockroachDB durable memory and changed this comparison."
+                if prior_review
+                else "The verified lumbar correction changed which skeletal sites were compared."
+            ),
+            counterfactual_without_key_memory=(
+                "Without the verified correction, the lumbar value would have been included "
+                "even though it was previously marked unsuitable."
+            ),
+        )
+
     def run_agent(
         self,
         *,
@@ -1320,81 +1453,50 @@ class CockroachWorkflowStore:
                 )
                 if total_hip is not None:
                     hip_series.append(f"{total_hip.bmd_g_cm2:.3f} ({report.scan_date.year})")
+            used_bedrock_fallback = False
             if self._bedrock is not None:
-                decision = self._bedrock.decide(
-                    BedrockDecisionContext(
-                        request_type=cast(
-                            Literal[
-                                "COMPARE_REPORTS",
-                                "EXPLAIN_MEMORY",
-                                "PREPARE_VISIT",
-                                "REVIEW_OPEN_TASKS",
+                try:
+                    decision = self._bedrock.decide(
+                        BedrockDecisionContext(
+                            request_type=cast(
+                                Literal[
+                                    "COMPARE_REPORTS",
+                                    "EXPLAIN_MEMORY",
+                                    "PREPARE_VISIT",
+                                    "REVIEW_OPEN_TASKS",
+                                ],
+                                request_type,
+                            ),
+                            query=query,
+                            prior_review_applied=prior_review,
+                            hip_series=hip_series,
+                            evidence=[
+                                BedrockEvidence(
+                                    memory_id=item.id,
+                                    title=item.title,
+                                    content=item.content,
+                                    source_type=item.source_type,
+                                    verification_status=item.verification_status,
+                                    disposition=item.disposition,
+                                    disposition_reason=item.disposition_reason,
+                                    trust_score=item.trust_score,
+                                )
+                                for item in trace
                             ],
-                            request_type,
-                        ),
-                        query=query,
-                        prior_review_applied=prior_review,
-                        hip_series=hip_series,
-                        evidence=[
-                            BedrockEvidence(
-                                memory_id=item.id,
-                                title=item.title,
-                                content=item.content,
-                                source_type=item.source_type,
-                                verification_status=item.verification_status,
-                                disposition=item.disposition,
-                                disposition_reason=item.disposition_reason,
-                                trust_score=item.trust_score,
-                            )
-                            for item in trace
-                        ],
-                    )
-                )
-            else:
-                decision = AgentDecision(
-                    summary=(
-                        f"The comparable left total hip series is {', '.join(hip_series)} g/cm2. "
-                        "Lumbar values marked for review remain visible as source evidence "
-                        "but are excluded from the longitudinal comparison."
-                    ),
-                    uncertainty=(
-                        "Scanner metadata still needs human confirmation. Measurement differences "
-                        "are presented without diagnostic interpretation."
-                    ),
-                    safety_notice=SAFETY_NOTICE,
-                    evidence=evidence,
-                    proposed_action=ProposedAction(
-                        action_type="NO_ACTION" if prior_review else "CREATE_CLINICIAN_REVIEW",
-                        title=(
-                            "Prior review decision remains active"
-                            if prior_review
-                            else "Confirm scanner comparability"
-                        ),
-                        rationale=(
-                            "A verified reviewer decision is already stored and was reused."
-                            if prior_review
-                            else (
-                                "The latest report and prior report list different "
-                                "scanner metadata."
-                            )
-                        ),
-                        payload={"focus": "scanner metadata", "site": "left total hip"},
-                        requires_human_approval=not prior_review,
-                    ),
-                    memory_impact_statement=(
-                        "A verified prior review and the lumbar correction were retrieved from "
-                        "CockroachDB durable memory and changed this comparison."
-                        if prior_review
-                        else (
-                            "The verified lumbar correction changed which skeletal sites "
-                            "were compared."
                         )
-                    ),
-                    counterfactual_without_key_memory=(
-                        "Without the verified correction, the lumbar value would have been "
-                        "included "
-                        "even though it was previously marked unsuitable."
-                    ),
+                    )
+                except BedrockInvocationError:
+                    used_bedrock_fallback = True
+                    decision = self._deterministic_agent_decision(
+                        evidence=evidence,
+                        hip_series=hip_series,
+                        prior_review=prior_review,
+                    )
+            else:
+                decision = self._deterministic_agent_decision(
+                    evidence=evidence,
+                    hip_series=hip_series,
+                    prior_review=prior_review,
                 )
             assert_safe_text(
                 decision.summary,
@@ -1512,6 +1614,7 @@ class CockroachWorkflowStore:
                     "vector_candidates": len(nearest),
                     "memory_dispositions": len(trace),
                     "review_task_created": task_id is not None,
+                    "bedrock_validation_fallback": used_bedrock_fallback,
                 },
             )
             return AgentRunResponse(
@@ -1524,6 +1627,45 @@ class CockroachWorkflowStore:
                 review_task_id=task_id,
                 created_at=now,
                 persisted_review_applied=prior_review,
+                processing_events=[
+                    ProcessingEvent(
+                        id="comparison-cockroach-retrieval",
+                        service=self._database_service,
+                        operation="Scoped trusted-memory retrieval",
+                        status="COMPLETED",
+                        detail=(
+                            f"Retrieved and policy-filtered {len(trace)} memory candidates "
+                            "for the authorized subject."
+                        ),
+                    ),
+                    ProcessingEvent(
+                        id="comparison-bedrock-decision",
+                        service=(
+                            "Amazon Bedrock" if self._bedrock is not None else "Local agent adapter"
+                        ),
+                        operation="Strict structured decision",
+                        status=("SAFE_FALLBACK" if used_bedrock_fallback else "COMPLETED"),
+                        detail=(
+                            "Bedrock output did not pass strict schema/evidence validation; "
+                            "application code used the authorized deterministic decision."
+                            if used_bedrock_fallback
+                            else (
+                                "The decision passed schema, evidence-ID, action, "
+                                "and safety validation."
+                            )
+                        ),
+                    ),
+                    ProcessingEvent(
+                        id="comparison-cockroach-commit",
+                        service=self._database_service,
+                        operation="Agent run transaction",
+                        status="COMPLETED",
+                        detail=(
+                            "Committed the run trace, memory dispositions, task state, "
+                            "and audit event."
+                        ),
+                    ),
+                ],
             )
 
         return self._transaction(operation)
