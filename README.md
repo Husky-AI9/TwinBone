@@ -5,15 +5,68 @@ corrections, unresolved questions, and human review decisions. Its differentiato
 visible Memory Trust Engine: stored provenance, verification state, validity, supersession,
 and retrieval disposition explain why durable memory changed a later action.
 
-> **Local product status:** Phases 2–9 have a tested synthetic vertical slice with FastAPI,
-> local mock AWS ingestion, CockroachDB-backed trusted-memory behavior, an optional live
-> Amazon Bedrock runtime, human review, a
-> polished responsive UI,
-> read-only MCP views, and reproducible safety evaluation. The AWS CDK application
-> synthesizes successfully. Cloud deployment, managed MCP activation, and AgentCore require
-> credentials and are not represented as complete. Local Bedrock support is implemented but
-> cannot be marked live-verified until credentials and a chat model ID are supplied. Local
-> workflow persistence uses the same CockroachDB tables intended for hosting.
+**[Open the live demo](https://main.d1zm7v13x5ofdq.amplifyapp.com)** and choose **Try demo
+account**. No credentials are required, and every record in the public experience is fabricated.
+
+> **Safety boundary:** BoneTwin organizes documents and prepares source-backed information for
+> human review. It does not diagnose, predict fractures, recommend medication, or make treatment
+> decisions. Never upload a real medical document to the public demo.
+
+## Why the memory matters
+
+A dashboard can display measurements. BoneTwin also remembers whether a measurement was
+corrected, superseded, excluded, or verified—and carries that decision into a later session. The
+demo's key proof is a **Memory Impact Trace** showing which CockroachDB memories were used, which
+were excluded, and how a prior human review changed the next bounded Bedrock action.
+
+The live hackathon slice currently provides:
+
+- a polished Next.js application hosted by AWS Amplify;
+- authenticated and subject-scoped FastAPI endpoints on AWS Lambda;
+- private, KMS-encrypted Amazon S3 upload with checksum verification and raw-file cleanup;
+- Amazon Nova Lite structured decisions and Titan Embeddings v2 vectors through Bedrock;
+- persistent reports, corrections, vectors, tasks, run traces, and audits in CockroachDB Cloud;
+- LangChain retrieval through the CockroachDB Cloud Managed MCP Server, allowlisted to
+  `select_query`; and
+- human approval that becomes verified memory and survives a new browser session.
+
+## Deployed architecture
+
+![BoneTwin deployed architecture](docs/diagrams/bonetwin-architecture.svg)
+
+The diagram shows only the path exercised by the hosted demo. Cognito, Textract, Step Functions,
+Comprehend Medical, and AgentCore exist as future-ready contracts or CDK definitions but are not
+claimed as deployed. The public hackathon slice uses a fixed, authenticated demo identity scoped
+to fabricated records; production use must replace it with real identity management.
+
+### Live request and memory flow
+
+1. Amplify serves the Next.js UI and proxies allowlisted API requests to Lambda without exposing
+   backend credentials.
+2. The browser uploads the selected PDF directly to a private S3 object using a short-lived SigV4
+   URL, SSE-KMS headers, byte count, and SHA-256 checksum.
+3. FastAPI validates and parses the object, calls Bedrock, commits source evidence and normalized
+   measurements to CockroachDB, then removes the temporary raw object.
+4. LangChain calls only the Managed MCP `select_query` tool to obtain subject-authorized memory
+   IDs. The application performs trust filtering and transactional writes; the model never writes
+   to the database.
+5. CockroachDB combines structured facts with a subject-prefixed `VECTOR(1024)` index. A human
+   decision is appended as verified memory and changes a later comparison.
+
+### Hackathon technology proof
+
+| Requirement                             | Live implementation and judge-visible proof                                                                                                                                                                         |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| CockroachDB Distributed Vector Indexing | Titan v2 embeddings are stored in `VECTOR(1024)` and retrieved with tenant/subject prefix constraints plus trust filters. **Memory trace** exposes used and excluded evidence.                                      |
+| CockroachDB Cloud Managed MCP Server    | LangChain invokes only the allowlisted `select_query` tool. **Trusted comparison** displays the MCP authorization and returned memory IDs.                                                                          |
+| CockroachDB Agent Skills                | The official privilege-hardening workflow produced a purpose-specific read-only role and removal of unintended `PUBLIC` access; redacted evidence is in [`docs/evidence/agent-skills`](docs/evidence/agent-skills). |
+| Amazon Web Services                     | Amplify hosts the UI; Lambda runs FastAPI; S3/KMS protects temporary uploads; Bedrock runs Nova Lite and Titan v2; Secrets Manager, CloudWatch, and X-Ray support the runtime.                                      |
+| Persistent agentic memory               | An approved review is written transactionally to CockroachDB, retrieved in a new session, and changes the next bounded action.                                                                                      |
+
+The reproducible 30-timeline evaluation compares latest-only, unfiltered vector-only, and hybrid
+trusted-memory retrieval. The checked-in [Phase 9 report](evaluations/reports/phase9-latest.md)
+records 100% key-memory recall and safe-action accuracy for the hybrid strategy with zero
+cross-subject leakage on the fabricated evaluation set.
 
 ## Run the complete local demo
 
@@ -105,7 +158,7 @@ This performs a synthetic presigned PUT/read/delete readiness probe before start
 Bedrock bearer token is not an S3 credential; use an S3-capable AWS IAM profile or temporary SDK
 credential variables.
 
-The three upload-ready PDFs are also available in [`output/pdf`](output/pdf). Regenerate
+The upload-ready fabricated PDFs are also available in [`output/pdf`](output/pdf). Regenerate
 them with:
 
 ```bash
@@ -155,22 +208,25 @@ credential.
 
 ## Simplest AWS deployment
 
-The repository includes managed build definitions for a Git-connected deployment:
+The live low-cost deployment follows the public GitHub `main` branch:
 
-- `apprunner.yaml` builds and starts the FastAPI service on AWS App Runner.
 - `amplify.yml` builds the pnpm/Next.js monorepo on AWS Amplify Hosting.
-- Hosted API startup applies migrations and the idempotent synthetic seed to the configured
+- CDK packages the FastAPI service for a Python 3.12 Lambda Function URL with CloudWatch logs and
+  X-Ray tracing.
+- The Lambda reads allowlisted runtime values from Secrets Manager, accesses a private
+  KMS-encrypted S3 bucket, invokes Bedrock, and persists state in CockroachDB Cloud.
+- Hosted startup applies migrations and the idempotent fabricated seed to the configured
   CockroachDB Cloud database.
 
-Both services can follow the public GitHub `main` branch and redeploy automatically. Amplify needs
-only the server-side API URL in `BONETWIN_API_URL`; `amplify.yml` routes browser requests through
-the allowlisted same-origin `/api/backend` gateway. Database, Managed MCP, and Bedrock credentials
-remain in the API runtime and are never exposed to the browser.
+Amplify redeploys the web application automatically. It routes browser requests through the
+allowlisted same-origin `/api/backend` gateway. Database and Managed MCP credentials remain in
+the Lambda runtime and are never exposed to the browser. The included `apprunner.yaml` is an
+alternative deployment manifest, not part of the live architecture.
 
 Follow the exact console fields and verification checklist in
 [docs/aws-managed-hosting.md](docs/aws-managed-hosting.md). This minimal path uses live Amazon
-Bedrock and AWS hosting but does not claim AgentCore, Cognito, Textract, or the CDK contract stacks
-as deployed.
+Bedrock, Amplify, Lambda, S3, KMS, Secrets Manager, CloudWatch, and X-Ray. It does not claim
+AgentCore, Cognito, Textract, Step Functions, or Comprehend Medical as deployed.
 
 ## CockroachDB Cloud and LangChain MCP credentials
 
@@ -197,25 +253,6 @@ review, idempotency, and audit transaction.
 BoneTwin supports document understanding and review preparation. It does not diagnose,
 predict fractures, recommend medication, or make treatment decisions. Use only synthetic or
 fully de-identified data. See [the synthetic-data policy](docs/synthetic-data-policy.md).
-
-## Architecture
-
-```mermaid
-flowchart LR
-    Web[Next.js web client] --> API[FastAPI]
-    API --> CRDB[(CockroachDB)]
-    API --> Workflow[AWS document workflow]
-    Workflow --> S3[S3 / Textract / DetectPHI]
-    API --> Agent[Validated agent runtime]
-    Agent --> Bedrock[Amazon Bedrock]
-    Agent --> CRDB
-    CRDB --> Trace[Memory Impact Trace]
-```
-
-The local end-to-end workflow writes structured reports, measurements, vectors, agent runs,
-retrieval dispositions, review decisions, verified memory, and audits to CockroachDB. A fresh
-API/store instance retrieves the prior review and changes the next action. Hosted deployment
-must replace only the explicitly labeled AWS/auth adapters and use CockroachDB Cloud.
 
 ## Prerequisites
 
@@ -305,8 +342,8 @@ make mcp-audit
 
 Cloud connection and judge prompts are documented in
 [docs/mcp-setup.md](docs/mcp-setup.md) and
-[docs/mcp-demo-prompts.md](docs/mcp-demo-prompts.md). Managed MCP activation remains a
-credentialed deployment step.
+[docs/mcp-demo-prompts.md](docs/mcp-demo-prompts.md). The hosted demo uses the credentialed
+Managed MCP path; local mock mode remains available for repeatable offline development.
 
 ## Phase 9 evaluation
 
