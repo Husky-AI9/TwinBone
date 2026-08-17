@@ -23,7 +23,7 @@ raw-document storage. Amplify SSR is deployed from the connected GitHub `main` b
 Repository-connected deployment preparation is complete: `amplify.yml` builds the pnpm Next.js
 monorepo, and a reproducible Lambda packaging script produces a Linux x86_64 artifact below AWS
 size limits. Hosted startup reads only four allowlisted Cockroach values from Secrets Manager.
-The locked dependency set and 39 non-integration tests pass; lint, strict typing, 39 Vitest tests,
+The locked dependency set and 39 non-integration tests pass; lint, strict typing, 40 Vitest tests,
 the Next.js production build, secret scan, evaluation, and both CDK synth paths also pass.
 Destructive demo reset remains disabled when `APP_ENV=hosted`.
 
@@ -169,7 +169,10 @@ created a fresh store instance, and returned `NO_ACTION` with
   cleanup. A successful upload refreshes the combined dashboard once and immediately selects the
   new left-total-hip source measurement in the anatomical preview. The trace log is constrained
   to a 290px viewport with vertical overflow, overscroll containment, and a keyboard-focusable
-  accessible log region, so additional events scroll instead of lengthening the Overview.
+  accessible log region, so additional events scroll instead of lengthening the Overview. A
+  completed Trusted Comparison now remains on Overview and replaces its launch card with a compact
+  validated result: proposed action, used/excluded counts, prior-review status, memory-impact and
+  counterfactual statements, plus explicit links to the full Memory Trace and review queue.
 - Bedrock comparison resilience: CloudWatch identified the generic comparison 500 as a correctly
   rejected Bedrock citation outside the authorized CockroachDB evidence set. Evidence validation
   remains strict. The runtime now retries one invalid structured proposal with a narrower citation

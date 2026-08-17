@@ -1,8 +1,16 @@
-import type { DocumentStatus, ProcessingEvent } from "@bonetwin/shared-types";
+import type {
+  AgentRun,
+  DocumentStatus,
+  ProcessingEvent,
+} from "@bonetwin/shared-types";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { ProcessingConsole, ProductApp } from "../components/product-app";
+import {
+  ComparisonOverviewResult,
+  ProcessingConsole,
+  ProductApp,
+} from "../components/product-app";
 
 const events: ProcessingEvent[] = [
   {
@@ -38,6 +46,82 @@ describe("backend processing console", () => {
     expect(markup).toContain("overflow-y-auto");
     expect(markup).not.toContain("min-h-[290px]");
     expect(markup).not.toContain("Accessible longitudinal view");
+  });
+
+  it("keeps a completed trusted comparison on Overview with explicit next steps", () => {
+    const run = {
+      id: "run-1",
+      subject_id: "subject-1",
+      status: "COMPLETED",
+      request_type: "LONGITUDINAL_COMPARISON",
+      decision: {
+        summary: "Prepared a source-backed comparison for human review.",
+        uncertainty: "Scanner differences require review.",
+        safety_notice: "This is not a diagnosis.",
+        evidence: [],
+        proposed_action: {
+          action_type: "CREATE_CLINICIAN_REVIEW",
+          title: "Review the hip comparison",
+          rationale: "A verified correction changed the evidence set.",
+          payload: {},
+          requires_human_approval: true,
+        },
+        memory_impact_statement:
+          "A verified correction excluded the lumbar measurement.",
+        counterfactual_without_key_memory:
+          "Without that correction, the lumbar value would have been included.",
+      },
+      memory_trace: [
+        {
+          id: "memory-used",
+          title: "Verified correction",
+          content: "Exclude lumbar measurement.",
+          source_type: "REVIEW",
+          source_label: "Clinician review",
+          verification_status: "VERIFIED",
+          confidence: 1,
+          trust_score: 1,
+          disposition: "USED",
+          disposition_reason: null,
+          created_at: "2026-08-16T12:00:00Z",
+        },
+        {
+          id: "memory-excluded",
+          title: "Superseded measurement",
+          content: "Older evidence.",
+          source_type: "REPORT",
+          source_label: "2019 report",
+          verification_status: "SUPERSEDED",
+          confidence: 0.9,
+          trust_score: 0.2,
+          disposition: "EXCLUDED",
+          disposition_reason: "Superseded by verified correction.",
+          created_at: "2019-05-03T12:00:00Z",
+        },
+      ],
+      review_task_id: "task-1",
+      created_at: "2026-08-16T12:00:00Z",
+      persisted_review_applied: false,
+      processing_events: events,
+    } satisfies AgentRun;
+
+    const markup = renderToStaticMarkup(
+      <ComparisonOverviewResult
+        run={run}
+        busy={false}
+        onRun={() => undefined}
+        onViewTrace={() => undefined}
+        onViewTasks={() => undefined}
+      />,
+    );
+
+    expect(markup).toContain("Trusted comparison ready");
+    expect(markup).toContain("Review the hip comparison");
+    expect(markup).toContain("A verified correction excluded");
+    expect(markup).toContain("Without that correction");
+    expect(markup).toContain("View full memory trace");
+    expect(markup).toContain("Review proposed task");
+    expect(markup).toContain(">1</p>");
   });
 
   it("uses the newly completed report for the anatomical preview immediately", () => {

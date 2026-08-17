@@ -537,12 +537,145 @@ export function ProcessingConsole({
   );
 }
 
+export function ComparisonOverviewResult({
+  run,
+  busy,
+  onRun,
+  onViewTrace,
+  onViewTasks,
+}: {
+  run: AgentRun;
+  busy: boolean;
+  onRun: () => void;
+  onViewTrace: () => void;
+  onViewTasks: () => void;
+}) {
+  const used = run.memory_trace.filter(
+    (item) => item.disposition !== "EXCLUDED",
+  ).length;
+  const excluded = run.memory_trace.length - used;
+  const hasReviewTask = run.review_task_id !== null;
+  const actionTitle =
+    run.decision.proposed_action.action_type === "NO_ACTION"
+      ? "No new review action required"
+      : run.decision.proposed_action.title;
+
+  return (
+    <Panel className="overflow-hidden border-[#cfe2dd]" id="comparison-result">
+      <div className="border-b border-slate-100 bg-[#f5faf8] p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <div className="flex items-center gap-2 text-[#2f766e]">
+              <Icon name="spark" className="size-4" />
+              <p className="text-[10px] font-bold uppercase tracking-[.18em]">
+                Trusted comparison ready
+              </p>
+            </div>
+            <h2 className="mt-2 text-lg font-semibold tracking-tight">
+              {actionTitle}
+            </h2>
+          </div>
+          <Badge tone={hasReviewTask ? "amber" : "teal"}>
+            {hasReviewTask ? "Human review" : "Validated result"}
+          </Badge>
+        </div>
+        <p className="mt-3 text-xs leading-5 text-slate-600">
+          {run.decision.summary}
+        </p>
+      </div>
+
+      <div className="p-5">
+        <div className="grid grid-cols-3 gap-2 text-center">
+          <div className="rounded-xl bg-emerald-50 p-3">
+            <p className="text-lg font-semibold text-emerald-700">{used}</p>
+            <p className="text-[9px] font-bold uppercase tracking-wider text-emerald-700/70">
+              Used
+            </p>
+          </div>
+          <div className="rounded-xl bg-slate-100 p-3">
+            <p className="text-lg font-semibold text-slate-600">{excluded}</p>
+            <p className="text-[9px] font-bold uppercase tracking-wider text-slate-500">
+              Excluded
+            </p>
+          </div>
+          <div className="rounded-xl bg-sky-50 p-3">
+            <p className="text-lg font-semibold text-sky-700">
+              {run.persisted_review_applied ? "Yes" : "No"}
+            </p>
+            <p className="text-[9px] font-bold uppercase tracking-wider text-sky-700/70">
+              Prior review
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-4 rounded-2xl border border-[#d8e9e4] bg-[#f4faf8] p-4">
+          <p className="text-[9px] font-bold uppercase tracking-[.14em] text-[#56857f]">
+            Memory that changed behavior
+          </p>
+          <p className="mt-2 text-sm font-semibold leading-5 text-slate-800">
+            {run.decision.memory_impact_statement}
+          </p>
+        </div>
+
+        {run.decision.counterfactual_without_key_memory && (
+          <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+            <p className="text-[9px] font-bold uppercase tracking-[.14em] text-amber-700">
+              Without the key memory
+            </p>
+            <p className="mt-2 text-xs leading-5 text-amber-900/75">
+              {run.decision.counterfactual_without_key_memory}
+            </p>
+          </div>
+        )}
+
+        {run.persisted_review_applied && (
+          <p className="mt-3 flex items-center gap-2 rounded-xl bg-emerald-50 p-3 text-xs font-semibold text-emerald-700">
+            <Icon name="check" className="size-4" /> Prior approval was
+            retrieved and reused in this session.
+          </p>
+        )}
+
+        <div className="mt-4 grid gap-2 sm:grid-cols-2">
+          <button
+            type="button"
+            onClick={onViewTrace}
+            className="rounded-xl bg-[#123d3a] px-4 py-3 text-xs font-semibold text-white hover:bg-[#1b514c]"
+          >
+            View full memory trace
+          </button>
+          {hasReviewTask ? (
+            <button
+              type="button"
+              onClick={onViewTasks}
+              className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-semibold text-amber-800 hover:bg-amber-100"
+            >
+              Review proposed task
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={onRun}
+              disabled={busy}
+              className="rounded-xl border border-slate-200 px-4 py-3 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-60"
+            >
+              {busy ? "Running again…" : "Run comparison again"}
+            </button>
+          )}
+        </div>
+      </div>
+    </Panel>
+  );
+}
+
 function Overview({
   timeline,
   latestReport,
   processingEvents,
+  run,
   onLoadRecord,
   onRun,
+  onViewTrace,
+  onViewTasks,
   onUploadSelected,
   selectedFile,
   onFileChange,
@@ -553,8 +686,11 @@ function Overview({
   timeline: Timeline | null;
   latestReport: Report | null;
   processingEvents: ProcessingEvent[];
+  run: AgentRun | null;
   onLoadRecord: () => void;
   onRun: () => void;
+  onViewTrace: () => void;
+  onViewTasks: () => void;
   onUploadSelected: () => void;
   selectedFile: File | null;
   onFileChange: (file: File | null) => void;
@@ -697,34 +833,44 @@ function Overview({
         />
         <div className="grid gap-5">
           <ProcessingConsole events={processingEvents} busy={busy} />
-          <section className="overflow-hidden rounded-[26px] bg-[#123d3a] p-6 text-white shadow-[0_22px_60px_rgba(18,61,58,.2)]">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-[.18em] text-[#a5ccc4]">
-                  Trusted comparison
-                </p>
-                <h2 className="mt-1 text-xl font-semibold">
-                  Ask memory, not just the latest report
-                </h2>
+          {run ? (
+            <ComparisonOverviewResult
+              run={run}
+              busy={busy}
+              onRun={onRun}
+              onViewTrace={onViewTrace}
+              onViewTasks={onViewTasks}
+            />
+          ) : (
+            <section className="overflow-hidden rounded-[26px] bg-[#123d3a] p-6 text-white shadow-[0_22px_60px_rgba(18,61,58,.2)]">
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-[.18em] text-[#a5ccc4]">
+                    Trusted comparison
+                  </p>
+                  <h2 className="mt-1 text-xl font-semibold">
+                    Ask memory, not just the latest report
+                  </h2>
+                </div>
+                <span className="grid size-10 place-items-center rounded-2xl bg-white/10">
+                  <Icon name="spark" />
+                </span>
               </div>
-              <span className="grid size-10 place-items-center rounded-2xl bg-white/10">
-                <Icon name="spark" />
-              </span>
-            </div>
-            <p className="mt-4 text-sm leading-6 text-white/65">
-              BoneTwin retrieves verified corrections, comparable sites, open
-              tasks, and source evidence before proposing a human-reviewed next
-              step.
-            </p>
-            <button
-              type="button"
-              onClick={onRun}
-              disabled={busy}
-              className="mt-5 w-full rounded-xl bg-white px-4 py-3 text-sm font-semibold text-[#123d3a] transition hover:bg-[#e9f5f1] disabled:opacity-60"
-            >
-              {busy ? "Building evidence bundle…" : "Run trusted comparison"}
-            </button>
-          </section>
+              <p className="mt-4 text-sm leading-6 text-white/65">
+                BoneTwin retrieves verified corrections, comparable sites, open
+                tasks, and source evidence before proposing a human-reviewed
+                next step.
+              </p>
+              <button
+                type="button"
+                onClick={onRun}
+                disabled={busy}
+                className="mt-5 w-full rounded-xl bg-white px-4 py-3 text-sm font-semibold text-[#123d3a] transition hover:bg-[#e9f5f1] disabled:opacity-60"
+              >
+                {busy ? "Building evidence bundle…" : "Run trusted comparison"}
+              </button>
+            </section>
+          )}
         </div>
       </div>
     </>
@@ -1805,7 +1951,6 @@ export function ProductApp({
       setProcessingEvents(result.processing_events);
       setConnected(true);
       invalidateTaskCache();
-      navigate("trace", false);
       notify(
         result.persisted_review_applied
           ? "Prior approval retrieved in this new session."
@@ -2059,8 +2204,11 @@ export function ProductApp({
                 timeline={timeline}
                 latestReport={document?.report ?? null}
                 processingEvents={processingEvents}
+                run={run}
                 onLoadRecord={() => void loadRecord()}
                 onRun={() => void runComparison()}
+                onViewTrace={() => navigate("trace", false)}
+                onViewTasks={() => navigate("tasks")}
                 onUploadSelected={() => {
                   if (selectedFile) void processFile(selectedFile);
                 }}
