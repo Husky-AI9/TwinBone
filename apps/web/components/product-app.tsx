@@ -482,8 +482,11 @@ export function ProcessingConsole({
         </p>
       </div>
       <div
+        aria-label="Backend processing events"
         aria-live="polite"
-        className="min-h-[290px] space-y-3 overflow-y-auto p-5 font-mono text-[11px] leading-5"
+        className="h-[290px] space-y-3 overflow-y-auto overscroll-contain p-5 font-mono text-[11px] leading-5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-emerald-300"
+        role="log"
+        tabIndex={0}
       >
         <p className="text-emerald-300">$ bonetwin workflow --source-backed</p>
         {events.length === 0 ? (

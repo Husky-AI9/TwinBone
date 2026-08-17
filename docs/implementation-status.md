@@ -167,7 +167,9 @@ created a fresh store instance, and returned `NO_ACTION` with
   contracts. Hosted uploads explicitly show AWS Lambda, encrypted Amazon S3 verification,
   Amazon Bedrock Titan embedding, the CockroachDB Cloud serializable commit, and raw-object
   cleanup. A successful upload refreshes the combined dashboard once and immediately selects the
-  new left-total-hip source measurement in the anatomical preview.
+  new left-total-hip source measurement in the anatomical preview. The trace log is constrained
+  to a 290px viewport with vertical overflow, overscroll containment, and a keyboard-focusable
+  accessible log region, so additional events scroll instead of lengthening the Overview.
 - Bedrock comparison resilience: CloudWatch identified the generic comparison 500 as a correctly
   rejected Bedrock citation outside the authorized CockroachDB evidence set. Evidence validation
   remains strict. The runtime now retries one invalid structured proposal with a narrower citation

@@ -31,6 +31,12 @@ describe("backend processing console", () => {
     expect(markup).toContain("Amazon Bedrock");
     expect(markup).toContain("CockroachDB Cloud");
     expect(markup).toContain("Serializable evidence commit");
+    expect(markup).toContain('aria-label="Backend processing events"');
+    expect(markup).toContain('role="log"');
+    expect(markup).toContain('tabindex="0"');
+    expect(markup).toContain("h-[290px]");
+    expect(markup).toContain("overflow-y-auto");
+    expect(markup).not.toContain("min-h-[290px]");
     expect(markup).not.toContain("Accessible longitudinal view");
   });
 
