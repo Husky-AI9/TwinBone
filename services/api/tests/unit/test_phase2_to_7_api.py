@@ -1,15 +1,16 @@
 import os
 from hashlib import sha256
 from pathlib import Path
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
 
 os.environ["WORKFLOW_STORE_MODE"] = "memory"
 
-from services.api.app.auth import DEMO_SUBJECT_ID  # noqa: E402
+from services.api.app.auth import DEMO_SUBJECT_ID, Principal  # noqa: E402
 from services.api.app.main import app
+from services.api.app.schemas import DocumentResponse  # noqa: E402
 from services.api.app.services import demo_store
 
 client = TestClient(app)
@@ -190,6 +191,54 @@ def test_synthetic_ingestion_is_ready_duplicate_safe_and_recoverable() -> None:
     assert reupload.status_code == 200
     assert reupload.json()["duplicate"] is False
     assert reupload.json()["document_id"] != document_id
+
+
+def test_complete_upload_delegates_direct_storage_verification(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    content = (
+        Path(__file__).resolve().parents[4] / "output" / "pdf" / "bonetwin-demo-dxa-2026.pdf"
+    ).read_bytes()
+    intent = client.post(
+        f"/v1/subjects/{DEMO_SUBJECT_ID}/documents/upload-intent",
+        headers={**AUTH, "Idempotency-Key": "direct-storage-intent-0001"},
+        json={
+            "original_filename": "bonetwin-demo-dxa-2026.pdf",
+            "content_type": "application/pdf",
+            "byte_size": len(content),
+            "sha256": sha256(content).hexdigest(),
+        },
+    )
+    document_id = intent.json()["document_id"]
+    delegated: list[tuple[str, str]] = []
+
+    def complete_direct_upload(
+        requested_document_id: UUID,
+        idempotency_key: str,
+        principal: Principal,
+    ) -> DocumentResponse:
+        del principal
+        document = demo_store.get_document(requested_document_id)
+        delegated.append((document.status, idempotency_key))
+        return document.model_copy(
+            update={
+                "status": "READY",
+                "progress": 100,
+                "status_message": "Direct storage upload verified and processed",
+            }
+        )
+
+    monkeypatch.setattr(demo_store, "complete_upload", complete_direct_upload)
+
+    completed = client.post(
+        f"/v1/documents/{document_id}/complete-upload",
+        headers={**AUTH, "Idempotency-Key": "direct-storage-complete-0001"},
+        json={"acknowledge_synthetic_only": True},
+    )
+
+    assert completed.status_code == 200
+    assert completed.json()["status"] == "READY"
+    assert delegated == [("UPLOADING", "direct-storage-complete-0001")]
 
 
 def test_demo_pdf_download_and_parser_failure_are_safe() -> None:

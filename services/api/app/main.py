@@ -303,11 +303,6 @@ def complete_upload(
     try:
         document = workflow_store.get_document(document_id)
         require_subject(principal, document.subject_id)
-        if document.status == "UPLOADING":
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Upload bytes must be accepted before processing",
-            )
         return workflow_store.complete_upload(document_id, idempotency_key, principal)
     except KeyError as error:
         raise not_found("Document not found") from error

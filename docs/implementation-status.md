@@ -176,6 +176,15 @@ created a fresh store instance, and returned `NO_ACTION` with
   comparison, and record-deletion operations now append namespaced entries to the existing trace;
   status updates replace only the matching step inside the current operation, and the scrollable
   log follows the newest event without erasing earlier history.
+- Hosted direct-upload completion repair: the authenticated completion route now delegates an
+  `UPLOADING` document to the configured raw-document adapter instead of assuming every upload used
+  the local byte endpoint. In S3 mode, the store reads the signed-upload object, verifies byte
+  count, SHA-256, and PDF signature, records the audited `UPLOADED` transition, processes the
+  report, and deletes the raw object. A route-level regression test covers delegation from the
+  S3-style state; the full 40-test non-integration suite, Ruff, MyPy, and secret scan pass. After
+  deployment, a live request through the Amplify origin recovered the previously blocked signed
+  S3 upload and returned `READY` with completed Lambda, S3, parser, Bedrock, and CockroachDB Cloud
+  events; the fabricated verification record was then deleted for a fresh demo upload.
 - Bedrock comparison resilience: CloudWatch identified the generic comparison 500 as a correctly
   rejected Bedrock citation outside the authorized CockroachDB evidence set. Evidence validation
   remains strict. The runtime now retries one invalid structured proposal with a narrower citation
